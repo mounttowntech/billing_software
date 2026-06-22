@@ -1,21 +1,21 @@
 const express = require("express");
 const router = express.Router();
 
-const purchaseController = require("../controllers/purchaseController");
+const {
+createPurchaseReturn,
+getPurchaseReturns,
+getPurchaseReturnById,
+deletePurchaseReturn
+} = require(
+"../controllers/purchaseReturnController"
+);
 
-// Create Purchase
-router.post("/", purchaseController.createPurchase);
+router.post("/create",createPurchaseReturn);
 
-// Get All Purchases
-router.get("/", purchaseController.getPurchases);
+router.get("/all",getPurchaseReturns);
 
-// // Get Single Purchase
-// router.get("/:id", purchaseController.getPurchaseById);
+router.get("/:id",getPurchaseReturnById);
 
-// // Update Purchase
-// router.put("/:id", purchaseController.updatePurchase);
-
-// // Delete Purchase
-// router.delete("/:id", purchaseController.deletePurchase);
+router.delete("/delete/:id",deletePurchaseReturn);
 
 module.exports = router;

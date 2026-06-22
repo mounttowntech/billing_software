@@ -1,10 +1,22 @@
-const router = require("express").Router();
-const c = require("../controllers/brandController.js");
+const express = require("express");
+const router = express.Router();
 
-router.post("/create", c.createBrand);
-router.get("/all", c.getBrands);
-router.get("/:id", c.getBrandById);
-router.put("/:id", c.updateBrand);
-router.delete("/:id", c.deleteBrand);
+const {
+    createBrand,
+    getBrands,
+    getBrandById,
+    updateBrand,
+    deleteBrand
+} = require("../controllers/brandController");
+
+router.post("/create", createBrand);
+
+router.get("/all", getBrands);
+
+router.get("/:id", getBrandById);
+
+router.put("/update/:id", updateBrand);
+
+router.delete("/delete/:id", deleteBrand);
 
 module.exports = router;

@@ -1,10 +1,20 @@
-const router = require("express").Router();
-const c = require("../controllers/customerAddressController");
+const express = require("express");
+const router = express.Router();
 
-router.post("/create", c.createCustomerAddress);
-router.get("/all", c.getCustomerAddresss);
-router.get("/:id", c.getCustomerAddressById);
-router.put("/:id", c.updateCustomerAddress);
-router.delete("/:id", c.deleteCustomerAddress);
+const {
+createAddress,
+getAddresses,
+getAddressById,
+updateAddress,
+deleteAddress
+} = require(
+"../controllers/customerAddressController"
+);
+
+router.post("/create",createAddress);
+router.get("/all",getAddresses);
+router.get("/:id",getAddressById);
+router.put("/update/:id",updateAddress);
+router.delete("/delete/:id",deleteAddress);
 
 module.exports = router;

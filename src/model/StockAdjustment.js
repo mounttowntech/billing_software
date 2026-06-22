@@ -1,15 +1,40 @@
+// StockAdjustment production schema
 const mongoose = require("mongoose");
 
-const stockAdjustmentSchema = new mongoose.Schema(
-  {
-    product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
-    variant: { type: mongoose.Schema.Types.ObjectId, ref: "ProductVariant", default: null },
-    adjustmentType: { type: String, enum: ["increase", "decrease"], required: true },
-    quantity: { type: Number, required: true },
-    reason: String,
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  },
-  { timestamps: true }
-);
+const stockAdjustmentSchema =
+new mongoose.Schema({
 
-module.exports = mongoose.model("StockAdjustment", stockAdjustmentSchema);
+    adjustmentNo:{
+        type:String,
+        unique:true
+    },
+
+    product:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"GarmentProduct"
+    },
+
+    skuCode:String,
+
+    adjustmentType:{
+        type:String,
+        enum:[
+            "increase",
+            "decrease"
+        ]
+    },
+
+    quantity:Number,
+
+    reason:String
+
+},{
+    timestamps:true,
+    versionKey:false
+});
+
+module.exports =
+mongoose.model(
+"StockAdjustment",
+stockAdjustmentSchema
+);
