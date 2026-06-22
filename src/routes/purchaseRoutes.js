@@ -1,7 +1,21 @@
-const router = require("express").Router();
-const controller = require("../controllers/purchaseController");
+const express = require("express");
+const router = express.Router();
 
-router.post("/", controller.createPurchase);
-router.get("/", controller.getPurchases);
+const {
+createPurchase,
+getPurchases,
+getPurchaseById,
+deletePurchase
+} = require(
+"../controllers/purchaseController"
+);
+
+router.post("/create",createPurchase);
+
+router.get("/all",getPurchases);
+
+router.get("/:id",getPurchaseById);
+
+router.delete("/delete/:id",deletePurchase);
 
 module.exports = router;

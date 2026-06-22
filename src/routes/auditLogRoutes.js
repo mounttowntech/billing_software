@@ -1,10 +1,14 @@
-const router = require("express").Router();
-const c = require("../controllers/auditLogController");
+const express = require("express");
+const router = express.Router();
 
-router.post("/create", c.createAuditLog);
-router.get("/all", c.getAuditLogs);
-router.get("/:id", c.getAuditLogById);
-router.put("/:id", c.updateAuditLog);
-router.delete("/:id", c.deleteAuditLog);
+const {
+  getAuditLogs,
+  getAuditLogById,
+  deleteAuditLog,
+} = require("../controllers/auditLogController");
+
+router.get("/all", getAuditLogs);
+router.get("/:id", getAuditLogById);
+router.delete("/:id", deleteAuditLog);
 
 module.exports = router;

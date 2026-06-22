@@ -1,6 +1,17 @@
-const Purchase = require("../models/purchaseModel");
+const Purchase =
+require("../model/Purchase");
 
-module.exports = async () => {
-  const count = await Purchase.countDocuments();
-  return `PUR-${String(count + 1).padStart(6, "0")}`;
+const generatePurchaseNo =
+async () => {
+
+    const count =
+        await Purchase.countDocuments();
+
+    return `PUR-${String(
+        count + 1
+    ).padStart(6,"0")}`;
+
 };
+
+module.exports =
+generatePurchaseNo;

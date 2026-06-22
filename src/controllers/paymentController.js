@@ -1,28 +1,30 @@
-const Payment = require("../model/paymentModel");
-const { createPaymentRecord } = require("../service/paymentService");
+const Payment = require("../model/Payment");
 
 exports.createPayment = async (req, res) => {
   try {
-    const payment = await createPaymentRecord({
-      ...req.body,
-      createdBy: req.user?._id,
-    });
+    const payment = await Payment.create(req.body);
 
     res.status(201).json({
       success: true,
-      message: "Payment created successfully",
       data: payment,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
 exports.getPayments = async (req, res) => {
   try {
     const payments = await Payment.find()
-      .populate("invoice purchase salesReturn customer supplier")
-      .sort({ createdAt: -1 });
+
+      .populate("customer", "customerName phone")
+
+      .sort({
+        createdAt: -1,
+      });
 
     res.json({
       success: true,
@@ -30,6 +32,60 @@ exports.getPayments = async (req, res) => {
       data: payments,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getPaymentById = async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+
+    res.json({
+      success: true,
+      data: payment,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updatePayment = async (req, res) => {
+  try {
+    const payment = await Payment.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    res.json({
+      success: true,
+      data: payment,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deletePayment = async (req, res) => {
+  try {
+    await Payment.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: "Payment Deleted",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

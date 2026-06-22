@@ -1,52 +1,85 @@
 const RolePermission = require("../model/RolePermission");
 
-exports.createRolePermission = async (req, res) => {
+exports.createRole = async (req, res) => {
   try {
-    const data = await RolePermission.create(req.body);
-    res.status(201).json({ success: true, message: "RolePermission created", data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
+    const role = await RolePermission.create(req.body);
 
-exports.getRolePermissions = async (req, res) => {
-  try {
-    const data = await RolePermission.find(req.query).sort({ createdAt: -1 });
-    res.json({ success: true, count: data.length, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.getRolePermissionById = async (req, res) => {
-  try {
-    const data = await RolePermission.findById(req.params.id);
-    if (!data) return res.status(404).json({ success: false, message: "RolePermission not found" });
-    res.json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.updateRolePermission = async (req, res) => {
-  try {
-    const data = await RolePermission.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    res.status(201).json({
+      success: true,
+      data: role,
     });
-    if (!data) return res.status(404).json({ success: false, message: "RolePermission not found" });
-    res.json({ success: true, message: "RolePermission updated", data });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
-exports.deleteRolePermission = async (req, res) => {
+exports.getRoles = async (req, res) => {
   try {
-    const data = await RolePermission.findByIdAndDelete(req.params.id);
-    if (!data) return res.status(404).json({ success: false, message: "RolePermission not found" });
-    res.json({ success: true, message: "RolePermission deleted" });
+    const roles = await RolePermission.find();
+
+    res.json({
+      success: true,
+      data: roles,
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getRoleById = async (req, res) => {
+  try {
+    const role = await RolePermission.findById(req.params.id);
+
+    res.json({
+      success: true,
+      data: role,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateRole = async (req, res) => {
+  try {
+    const role = await RolePermission.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true },
+    );
+
+    res.json({
+      success: true,
+      data: role,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deleteRole = async (req, res) => {
+  try {
+    await RolePermission.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: "Role deleted",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };

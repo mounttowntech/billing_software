@@ -1,6 +1,17 @@
-const Invoice = require("../models/invoiceModel");
+const GarmentInvoice =
+require("../model/GarmentInvoice");
 
-module.exports = async () => {
-  const count = await Invoice.countDocuments();
-  return `INV-${String(count + 1).padStart(6, "0")}`;
+const generateInvoiceNo =
+async () => {
+
+    const count =
+        await GarmentInvoice.countDocuments();
+
+    return `INV-${String(
+        count + 1
+    ).padStart(6,"0")}`;
+
 };
+
+module.exports =
+generateInvoiceNo;

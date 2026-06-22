@@ -1,28 +1,19 @@
 const mongoose = require("mongoose");
-
-const rolePermissionSchema = new mongoose.Schema(
-  {
-    role: {
-      type: String,
-      enum: ["superadmin", "owner", "manager", "cashier", "accountant"],
-      required: true,
-      unique: true,
+module.exports = mongoose.model(
+  "RolePermission",
+  new mongoose.Schema(
+    {
+      roleName: { type: String, unique: true },
+      permissions: [
+        {
+          module: String,
+          create: Boolean,
+          read: Boolean,
+          update: Boolean,
+          delete: Boolean,
+        },
+      ],
     },
-    permissions: {
-      dashboard: [String],
-      products: [String],
-      purchases: [String],
-      invoices: [String],
-      returns: [String],
-      payments: [String],
-      stock: [String],
-      expenses: [String],
-      reports: [String],
-      restaurant: [String],
-      settings: [String],
-    },
-  },
-  { timestamps: true }
+    { timestamps: true, versionKey: false },
+  ),
 );
-
-module.exports = mongoose.model("RolePermission", rolePermissionSchema);

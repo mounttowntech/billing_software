@@ -1,38 +1,45 @@
+// StockLedger production schema
 const mongoose = require("mongoose");
 
-const stockLedgerSchema = new mongoose.Schema(
-  {
-    product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
-    variant: { type: mongoose.Schema.Types.ObjectId, ref: "ProductVariant", default: null },
+const stockLedgerSchema =
+new mongoose.Schema({
 
-    movementType: {
-      type: String,
-      enum: [
-        "purchase_in",
-        "sale_out",
-        "sale_return_in",
-        "purchase_return_out",
-        "adjustment_in",
-        "adjustment_out",
-        "recipe_consumption",
-      ],
-      required: true,
+    product:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:"GarmentProduct"
     },
 
-    quantity: { type: Number, required: true },
-    beforeStock: { type: Number, required: true },
-    afterStock: { type: Number, required: true },
+    skuCode:String,
 
-    referenceModel: String,
-    referenceId: mongoose.Schema.Types.ObjectId,
-    note: String,
-
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+    movementType:{
+        type:String,
+        enum:[
+            "purchase",
+            "sale",
+            "sales_return",
+            "purchase_return",
+            "adjustment_in",
+            "adjustment_out"
+        ]
     },
-  },
-  { timestamps: true }
+
+    quantity:Number,
+
+    beforeStock:Number,
+
+    afterStock:Number,
+
+    referenceNumber:String,
+
+    remarks:String
+
+},{
+    timestamps:true,
+    versionKey:false
+});
+
+module.exports =
+mongoose.model(
+"StockLedger",
+stockLedgerSchema
 );
-
-module.exports = mongoose.model("StockLedger", stockLedgerSchema);
