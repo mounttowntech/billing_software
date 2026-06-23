@@ -20,19 +20,17 @@ const {
   stockSummary,
 } = require("../controllers/productController");
 
+router.post("/create", createProduct);
 
-
-router.post("/", createProduct);
-
-router.get("/", getProducts);
+router.get("/all", getProducts);
 
 router.get("/stock-summary", stockSummary);
 
 router.get("/:id", getProductById);
 
-router.put("/:id", updateProduct);
+router.put("/update/:id", updateProduct);
 
-router.delete("/:id", deleteProduct);
+router.delete("/delete/:id", deleteProduct);
 
 // SKU Search
 
