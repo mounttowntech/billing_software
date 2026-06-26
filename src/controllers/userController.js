@@ -4,64 +4,59 @@ const generateOTP = require("../utils/generateOTP");
 
 const sendMail = require("../utils/sendMail");
 
+const generateToken = require("../utils/generateToken");
 
-
-exports.createUser = async (req, res) => {
+exports.register = async (req, res) => {
   try {
-
     const {
       firstName,
       lastName,
       email,
       phone,
       password,
-      role
+      role,
     } = req.body;
 
-    const count =
-      await User.countDocuments();
-
-    const employeeCode =
-      `EMP${String(count + 1).padStart(4, "0")}`;
-
-    const existingUser =
-      await User.findOne({
-        $or: [
-          { email },
-          { phone }
-        ]
-      });
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone }],
+    });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: "User already exists"
+        message: "User already exists",
       });
     }
 
-    const user =
-      await User.create({
-        employeeCode,
-        firstName,
-        lastName,
-        email,
-        phone,
-        password,
-        role
-      });
+    const count = await User.countDocuments();
+
+    const employeeCode = `EMP${String(count + 1).padStart(4, "0")}`;
+
+    const user = await User.create({
+      employeeCode,
+      firstName,
+      lastName,
+      email,
+      phone,
+      password,
+      role,
+    });
+
+    const populatedUser = await User.findById(user._id).populate("role");
+
+    const token = generateToken(populatedUser);
 
     res.status(201).json({
       success: true,
-      data: user
+      message: "User Registered Successfully",
+      token,
+      user: populatedUser,
     });
-
   } catch (error) {
-
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
-
   }
 };
 
@@ -74,6 +69,63 @@ exports.getUsers = async (req, res) => {
       data: users,
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and Password are required",
+      });
+    }
+
+    const user = await User.findOne({ email })
+      .select("+password")
+      .populate("role");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        message: "User account is inactive",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid Email or Password",
+      });
+    }
+
+    const token = generateToken(user);
+
+    user.password = undefined;
+
+    res.status(200).json({
+      success: true,
+      message: "Login Successful",
+      token,
+      user,
+    });
+  } catch (error) {
+    console.log(error);
+
     res.status(500).json({
       success: false,
       message: error.message,

@@ -1,1 +1,16 @@
-const mongoose=require('mongoose');module.exports=mongoose.model('AuditLog',new mongoose.Schema({user:{type:mongoose.Schema.Types.ObjectId,ref:'User'},module:String,action:String,referenceId:mongoose.Schema.Types.ObjectId,oldValue:Object,newValue:Object,ipAddress:String},{timestamps:true,versionKey:false}));
+const mongoose = require("mongoose");
+module.exports = mongoose.model(
+  "AuditLog",
+  new mongoose.Schema(
+    {
+      user: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      module: String,
+      action: String,
+      referenceId: mongoose.Schema.Types.ObjectId,
+      oldValue: Object,
+      newValue: Object,
+      ipAddress: String,
+    },
+    { timestamps: true },
+  ),
+);
