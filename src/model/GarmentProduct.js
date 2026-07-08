@@ -38,12 +38,11 @@ const garmentProductSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false },
 );
 
-garmentProductSchema.pre("save", function (next) {
+garmentProductSchema.pre("save", function () {
   this.totalStock = this.variants.reduce(
-    (a, b) => a + (b.currentStock || 0),
-    0,
+    (total, variant) => total + (variant.currentStock || 0),
+    0
   );
-  next();
 });
 
 module.exports = mongoose.model("GarmentProduct", garmentProductSchema);

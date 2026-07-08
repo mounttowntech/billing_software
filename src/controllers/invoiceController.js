@@ -1,20 +1,14 @@
-const GarmentInvoice =
-require("../model/GarmentFabric");
+const GarmentInvoice = require("../model/GarmentInvoice");
 
-const GarmentProduct =
-require("../model/GarmentProduct");
+const GarmentProduct = require("../model/GarmentProduct");
 
-const generateInvoiceNo =
-require("../utils/generateInvoiceNumber");
+const generateInvoiceNo = require("../utils/generateInvoiceNumber");
 
-const calculateGST =
-require("../utils/gstCalculator");
+const calculateGST = require("../utils/gstCalculator");
 
-const paymentCalculation =
-require("../utils/paymentCalculation");
+const paymentCalculation = require("../utils/paymentCalculation");
 
-const createStockLedger =
-require("../utils/stockLedger");
+const createStockLedger = require("../utils/stockLedger");
 
 /*
 |--------------------------------------------------------------------------
@@ -22,204 +16,150 @@ require("../utils/stockLedger");
 |--------------------------------------------------------------------------
 */
 
-exports.createInvoice = async (req,res)=>{
+exports.createInvoice = async (req, res) => {
+  try {
+    const {
+      customer,
+      items,
+      discountAmount = 0,
+      paidAmount = 0,
+      paymentMethod,
+      remarks,
+    } = req.body;
 
-try{
+    let subTotal = 0;
+    let gstAmount = 0;
 
-const {
-customer,
-items,
-discountAmount = 0,
-paidAmount = 0,
-paymentMethod,
-remarks
-} = req.body;
+    const invoiceItems = [];
 
-let subTotal = 0;
-let gstAmount = 0;
+    for (const item of items) {
+      const product = await GarmentProduct.findById(item.product);
 
-const invoiceItems = [];
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: "Product Not Found",
+        });
+      }
 
-for(const item of items){
+      const variant = product.variants.find((v) => v.skuCode === item.skuCode);
 
-const product =
-await GarmentProduct.findById(
-item.product
-);
+      if (!variant) {
+        return res.status(404).json({
+          success: false,
+          message: "Variant Not Found",
+        });
+      }
 
-if(!product){
-return res.status(404).json({
-success:false,
-message:"Product Not Found"
-});
-}
+      if (variant.currentStock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Insufficient Stock For ${product.productName}`,
+        });
+      }
 
-const variant =
-product.variants.find(
-v=>v.skuCode === item.skuCode
-);
+      const amount = item.quantity * variant.sellingPrice;
 
-if(!variant){
-return res.status(404).json({
-success:false,
-message:"Variant Not Found"
-});
-}
+      const gstResult = calculateGST(amount, variant.gstPercentage);
 
-if(
-variant.currentStock <
-item.quantity
-){
-return res.status(400).json({
-success:false,
-message:`Insufficient Stock For ${product.productName}`
-});
-}
+      subTotal += amount;
+      gstAmount += gstResult.gstAmount;
 
-const amount =
-item.quantity *
-variant.sellingPrice;
+      variant.currentStock = variant.currentStock - item.quantity;
 
-const gstResult =
-calculateGST(
-amount,
-variant.gstPercentage
-);
+      await product.save();
 
-subTotal += amount;
-gstAmount += gstResult.gstAmount;
+      await createStockLedger({
+        product: product._id,
 
-variant.currentStock =
-variant.currentStock -
-item.quantity;
+        skuCode: variant.skuCode,
 
-await product.save();
+        movementType: "sale",
 
-await createStockLedger({
+        quantity: item.quantity,
 
-product:product._id,
+        beforeStock: variant.currentStock + item.quantity,
 
-skuCode:variant.skuCode,
+        afterStock: variant.currentStock,
 
-movementType:"sale",
+        referenceNumber: "SALE",
 
-quantity:item.quantity,
+        remarks: "Invoice Sale",
+      });
 
-beforeStock:
-variant.currentStock +
-item.quantity,
+      invoiceItems.push({
+        product: product._id,
 
-afterStock:
-variant.currentStock,
+        skuCode: variant.skuCode,
 
-referenceNumber:"SALE",
+        barcode: variant.barcode,
 
-remarks:"Invoice Sale"
+        productName: product.productName,
 
-});
+        size: variant.size,
 
-invoiceItems.push({
+        color: variant.color,
 
-product:product._id,
+        quantity: item.quantity,
 
-skuCode:variant.skuCode,
+        price: variant.sellingPrice,
 
-barcode:variant.barcode,
+        gstPercentage: variant.gstPercentage,
 
-productName:
-product.productName,
+        gstAmount: gstResult.gstAmount,
 
-size:variant.size,
+        totalAmount: gstResult.totalAmount,
+      });
+    }
 
-color:variant.color,
+    const grandTotal = subTotal + gstAmount - discountAmount;
 
-quantity:item.quantity,
+    const paymentInfo = paymentCalculation(grandTotal, paidAmount);
 
-price:
-variant.sellingPrice,
+    const invoiceNo = await generateInvoiceNo();
 
-gstPercentage:
-variant.gstPercentage,
+    const invoice = await GarmentInvoice.create({
+      invoiceNo,
 
-gstAmount:
-gstResult.gstAmount,
+      customer,
 
-totalAmount:
-gstResult.totalAmount
+      items: invoiceItems,
 
-});
+      subTotal,
 
-}
+      discountAmount,
 
-const grandTotal =
-(subTotal + gstAmount)
-- discountAmount;
+      gstAmount,
 
-const paymentInfo =
-paymentCalculation(
-grandTotal,
-paidAmount
-);
+      grandTotal,
 
-const invoiceNo =
-await generateInvoiceNo();
+      paidAmount,
 
-const invoice =
-await GarmentInvoice.create({
+      dueAmount: paymentInfo.balanceAmount,
 
-invoiceNo,
+      returnAmount: paymentInfo.returnAmount,
 
-customer,
+      paymentStatus: paymentInfo.paymentStatus,
 
-items:invoiceItems,
+      paymentMethod,
 
-subTotal,
+      remarks,
+    });
 
-discountAmount,
+    res.status(201).json({
+      success: true,
 
-gstAmount,
+      message: "Invoice Created Successfully",
 
-grandTotal,
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
 
-paidAmount,
-
-dueAmount:
-paymentInfo.balanceAmount,
-
-returnAmount:
-paymentInfo.returnAmount,
-
-paymentStatus:
-paymentInfo.paymentStatus,
-
-paymentMethod,
-
-remarks
-
-});
-
-res.status(201).json({
-
-success:true,
-
-message:"Invoice Created Successfully",
-
-data:invoice
-
-});
-
-}catch(error){
-
-res.status(500).json({
-
-success:false,
-
-message:error.message
-
-});
-
-}
-
+      message: error.message,
+    });
+  }
 };
 
 /*
@@ -228,42 +168,30 @@ message:error.message
 |--------------------------------------------------------------------------
 */
 
-exports.getInvoices =
-async(req,res)=>{
-try{
+exports.getInvoices = async (req, res) => {
+  try {
+    const invoices = await GarmentInvoice.find()
 
-const invoices =
-await GarmentInvoice.find()
+      .populate("customer")
 
-.populate(
-"customer"
-)
+      .sort({
+        createdAt: -1,
+      });
 
-.sort({
-createdAt:-1
-});
+    res.status(200).json({
+      success: true,
 
-res.status(200).json({
+      count: invoices.length,
 
-success:true,
+      data: invoices,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
 
-count:invoices.length,
-
-data:invoices
-
-});
-
-}catch(error){
-
-res.status(500).json({
-
-success:false,
-
-message:error.message
-
-});
-
-}
+      message: error.message,
+    });
+  }
 };
 
 /*
@@ -272,47 +200,32 @@ message:error.message
 |--------------------------------------------------------------------------
 */
 
-exports.getInvoiceById =
-async(req,res)=>{
-try{
+exports.getInvoiceById = async (req, res) => {
+  try {
+    const invoice = await GarmentInvoice.findById(req.params.id).populate(
+      "customer",
+    );
 
-const invoice =
-await GarmentInvoice.findById(
-req.params.id
-)
-.populate("customer");
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
 
-if(!invoice){
+        message: "Invoice Not Found",
+      });
+    }
 
-return res.status(404).json({
+    res.status(200).json({
+      success: true,
 
-success:false,
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
 
-message:"Invoice Not Found"
-
-});
-
-}
-
-res.status(200).json({
-
-success:true,
-
-data:invoice
-
-});
-
-}catch(error){
-
-res.status(500).json({
-
-success:false,
-
-message:error.message
-
-});
-
-}
+      message: error.message,
+    });
+  }
 };
 
 /*
@@ -321,47 +234,30 @@ message:error.message
 |--------------------------------------------------------------------------
 */
 
-exports.deleteInvoice =
-async(req,res)=>{
-try{
+exports.deleteInvoice = async (req, res) => {
+  try {
+    const invoice = await GarmentInvoice.findById(req.params.id);
 
-const invoice =
-await GarmentInvoice.findById(
-req.params.id
-);
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
 
-if(!invoice){
+        message: "Invoice Not Found",
+      });
+    }
 
-return res.status(404).json({
+    await invoice.deleteOne();
 
-success:false,
+    res.status(200).json({
+      success: true,
 
-message:"Invoice Not Found"
+      message: "Invoice Deleted Successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
 
-});
-
-}
-
-await invoice.deleteOne();
-
-res.status(200).json({
-
-success:true,
-
-message:
-"Invoice Deleted Successfully"
-
-});
-
-}catch(error){
-
-res.status(500).json({
-
-success:false,
-
-message:error.message
-
-});
-
-}
+      message: error.message,
+    });
+  }
 };

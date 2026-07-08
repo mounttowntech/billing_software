@@ -1,70 +1,53 @@
-const stockCalculation = (
-    currentStock,
-    quantity,
-    operation
-) => {
+const stockCalculation = (currentStock, quantity, operation) => {
 
-    let newStock =
-        currentStock;
+    currentStock = Number(currentStock);
+    quantity = Number(quantity);
 
-    switch(operation){
+    let newStock = currentStock;
+
+    switch (operation) {
 
         case "purchase":
-            newStock =
-                currentStock +
-                quantity;
+            newStock = currentStock + quantity;
             break;
 
         case "sale":
-            newStock =
-                currentStock -
-                quantity;
+            if (currentStock < quantity) {
+                throw new Error("Insufficient Stock");
+            }
+            newStock = currentStock - quantity;
             break;
 
         case "sales_return":
-            newStock =
-                currentStock +
-                quantity;
+            newStock = currentStock + quantity;
             break;
 
         case "purchase_return":
-            newStock =
-                currentStock -
-                quantity;
+            if (currentStock < quantity) {
+                throw new Error("Insufficient Stock");
+            }
+            newStock = currentStock - quantity;
             break;
 
         case "adjustment_in":
-            newStock =
-                currentStock +
-                quantity;
+            newStock = currentStock + quantity;
             break;
 
         case "adjustment_out":
-            newStock =
-                currentStock -
-                quantity;
+            if (currentStock < quantity) {
+                throw new Error("Insufficient Stock");
+            }
+            newStock = currentStock - quantity;
             break;
 
         default:
-            throw new Error(
-                "Invalid Stock Operation"
-            );
-    }
-
-    if(newStock < 0){
-        throw new Error(
-            "Insufficient Stock"
-        );
+            throw new Error("Invalid Stock Operation");
     }
 
     return {
-        beforeStock:
-            currentStock,
-        quantity,
-        afterStock:
-            newStock
+        beforeStock: currentStock,
+        afterStock: newStock
     };
 };
 
-module.exports =
-stockCalculation;
+module.exports = stockCalculation;

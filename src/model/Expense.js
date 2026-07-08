@@ -39,8 +39,7 @@ new mongoose.Schema({
     note:String
 
 },{
-    timestamps:true,
-    versionKey:false
+    timestamps:true
 });
 
 module.exports =

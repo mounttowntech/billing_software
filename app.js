@@ -41,5 +41,5 @@ app.use("/api/roles", require("./src/routes/rolePermissionRoutes"));
 app.use("/api/stores", require("./src/routes/storeRoutes"));
 app.use("/api/auditlogs", require("./src/routes/auditLogRoutes"));
 app.use("/api/measurements", require("./src/routes/measurementRoutes"));
-
+app.use("/api/suppliers",require("./src/routes/supplierRoutes"));
 module.exports = app;
