@@ -28,11 +28,14 @@ app.use("/api/unit", require("./src/routes/unitRoutes"));
 app.use("/api/customerdetails", require("./src/routes/customerAddressRoutes"));
 app.use("/api/customers", require("./src/routes/customerRoutes"));
 app.use("/api/invoice", require("./src/routes/invoiceRoutes"));
-app.use("/api/product", require("./src/routes/productRoutes"));
+app.use("/api/products", require("./src/routes/productRoutes"));
 app.use("/api/purchase", require("./src/routes/purchaseRoutes"));
 app.use("/api/purchasereturn", require("./src/routes/purchaseReturnRoutes"));
 app.use("/api/salesreturn", require("./src/routes/salesReturnRoutes"));
-app.use("/api/stock-adjustments",require("./src/routes/stockadjustmentRoutes"));
+app.use(
+  "/api/stock-adjustments",
+  require("./src/routes/stockadjustmentRoutes"),
+);
 app.use("/api/stock-ledgers", require("./src/routes/stockledgerRoutes"));
 app.use("/api/payments", require("./src/routes/paymentRoutes"));
 app.use("/api/expenses", require("./src/routes/expenseRoutes"));
@@ -41,5 +44,5 @@ app.use("/api/roles", require("./src/routes/rolePermissionRoutes"));
 app.use("/api/stores", require("./src/routes/storeRoutes"));
 app.use("/api/auditlogs", require("./src/routes/auditLogRoutes"));
 app.use("/api/measurements", require("./src/routes/measurementRoutes"));
-app.use("/api/suppliers",require("./src/routes/supplierRoutes"));
+app.use("/api/suppliers", require("./src/routes/supplierRoutes"));
 module.exports = app;

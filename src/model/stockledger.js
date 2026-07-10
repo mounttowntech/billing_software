@@ -17,6 +17,7 @@ new mongoose.Schema({
             "purchase",
             "sale",
             "sales_return",
+            "sale_cancel",
             "purchase_return",
             "adjustment_in",
             "adjustment_out"

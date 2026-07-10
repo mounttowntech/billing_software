@@ -1,5 +1,5 @@
 const Purchase = require("../model/Purchase");
-
+const StockLedger = require("../model/StockLedger");
 const GarmentProduct = require("../model/GarmentProduct");
 
 const generatePurchaseNo = require("../utils/generatePurchaseNumber");

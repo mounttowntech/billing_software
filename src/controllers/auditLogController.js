@@ -83,6 +83,59 @@ exports.getAuditLogById = async (req, res) => {
   }
 };
 
+exports.updateAuditLogById = async (req, res) => {
+  try {
+    const {
+      user,
+      module,
+      action,
+      referenceId,
+      oldValue,
+      newValue,
+      ipAddress,
+    } = req.body;
+
+    const existingLog = await AuditLog.findById(req.params.id);
+
+    if (!existingLog) {
+      return res.status(404).json({
+        success: false,
+        message: "Audit log not found.",
+      });
+    }
+
+    const updatedLog = await AuditLog.findByIdAndUpdate(
+      req.params.id,
+      {
+        user,
+        module,
+        action,
+        referenceId,
+        oldValue,
+        newValue,
+        ipAddress:
+          ipAddress ||
+          req.headers["x-forwarded-for"] ||
+          req.socket.remoteAddress,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).populate("user", "firstName lastName");
+
+    res.status(200).json({
+      success: true,
+      message: "Audit log updated successfully.",
+      data: updatedLog,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 exports.deleteAuditLog = async (req, res) => {
   try {
     await AuditLog.findByIdAndDelete(req.params.id);
