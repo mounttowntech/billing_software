@@ -8,8 +8,6 @@ const StockLedger =
 require("../model/StockLedger");
 const mongoose = require("mongoose");
 
-
-
 exports.createStockAdjustment = async (req, res) => {
   try {
 
@@ -158,7 +156,145 @@ exports.getStockAdjustmentById = async (req, res) => {
     });
   }
 };
+exports.updateStockAdjustmentById = async (req, res) => {
+  try {
+    const adjustment = await StockAdjustment.findById(req.params.id);
 
+    if (!adjustment) {
+      return res.status(404).json({
+        success: false,
+        message: "Stock Adjustment not found.",
+      });
+    }
+
+    const {
+      product,
+      skuCode,
+      adjustmentType,
+      quantity,
+      reason,
+    } = req.body;
+
+    const productId = product || adjustment.product;
+    const updatedSkuCode = skuCode || adjustment.skuCode;
+    const updatedType =
+      adjustmentType || adjustment.adjustmentType;
+    const updatedQuantity =
+      quantity !== undefined
+        ? Number(quantity)
+        : adjustment.quantity;
+
+    // Find Product
+    const garmentProduct =
+      await GarmentProduct.findById(productId);
+
+    if (!garmentProduct) {
+      return res.status(404).json({
+        success: false,
+        message: "Garment Product not found.",
+      });
+    }
+
+    // Find Variant
+    const variant = garmentProduct.variants.find(
+      (v) => v.skuCode === updatedSkuCode
+    );
+
+    if (!variant) {
+      return res.status(404).json({
+        success: false,
+        message: "SKU Code not found.",
+      });
+    }
+
+    /*
+      Step 1: Reverse old adjustment
+    */
+    if (adjustment.adjustmentType === "increase") {
+      variant.currentStock -= adjustment.quantity;
+    } else {
+      variant.currentStock += adjustment.quantity;
+    }
+
+    /*
+      Step 2: Apply new adjustment
+    */
+    const operation =
+      updatedType === "increase"
+        ? "adjustment_in"
+        : "adjustment_out";
+
+    const stock = stockCalculation(
+      variant.currentStock,
+      updatedQuantity,
+      operation
+    );
+
+    variant.currentStock = stock.afterStock;
+
+    garmentProduct.totalStock =
+      garmentProduct.variants.reduce(
+        (sum, item) => sum + item.currentStock,
+        0
+      );
+
+    await garmentProduct.save();
+
+    /*
+      Step 3: Update Adjustment Document
+    */
+    const updatedAdjustment =
+      await StockAdjustment.findByIdAndUpdate(
+        req.params.id,
+        {
+          product: productId,
+          skuCode: updatedSkuCode,
+          adjustmentType: updatedType,
+          quantity: updatedQuantity,
+          reason:
+            reason !== undefined
+              ? reason
+              : adjustment.reason,
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
+    /*
+      Step 4: Create Ledger Entry
+    */
+    await StockLedger.create({
+      product: productId,
+      skuCode: updatedSkuCode,
+      movementType: operation,
+      quantity: updatedQuantity,
+      beforeStock: stock.beforeStock,
+      afterStock: stock.afterStock,
+      referenceNumber:
+        updatedAdjustment.adjustmentNo,
+      remarks:
+        reason !== undefined
+          ? reason
+          : adjustment.reason,
+    });
+
+    res.status(200).json({
+      success: true,
+      message:
+        "Stock Adjustment updated successfully.",
+      data: updatedAdjustment,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 exports.deleteStockAdjustment = async (req, res) => {
   try {
     await StockAdjustment.findByIdAndDelete(req.params.id);

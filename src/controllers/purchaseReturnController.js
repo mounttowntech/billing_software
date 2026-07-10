@@ -47,7 +47,38 @@ exports.getPurchaseReturnById = async (req, res) => {
     });
   }
 };
+exports.updatePurchaseReturnById = async (req, res) => {
+  try {
+    const purchaseReturn = await PurchaseReturn.findById(req.params.id);
 
+    if (!purchaseReturn) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase Return not found.",
+      });
+    }
+
+    const updatedPurchaseReturn = await PurchaseReturn.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Purchase Return updated successfully.",
+      data: updatedPurchaseReturn,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 exports.deletePurchaseReturn = async (req, res) => {
   try {
     await PurchaseReturn.findByIdAndDelete(req.params.id);

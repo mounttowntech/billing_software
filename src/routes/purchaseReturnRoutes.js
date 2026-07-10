@@ -5,6 +5,7 @@ const {
 createPurchaseReturn,
 getPurchaseReturns,
 getPurchaseReturnById,
+updatePurchaseReturnById,
 deletePurchaseReturn
 } = require(
 "../controllers/purchaseReturnController"
@@ -15,6 +16,11 @@ router.post("/create",createPurchaseReturn);
 router.get("/all",getPurchaseReturns);
 
 router.get("/:id",getPurchaseReturnById);
+
+router.put(
+  "/update/:id",
+  updatePurchaseReturnById
+);
 
 router.delete("/delete/:id",deletePurchaseReturn);
 
