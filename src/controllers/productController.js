@@ -12,6 +12,16 @@ const generateBarcode = require("../utils/generateBarcode");
 
 exports.createProduct = async (req, res) => {
   try {
+    // Parse variants from FormData
+    if (req.body.variants) {
+      req.body.variants = JSON.parse(req.body.variants);
+    }
+
+    // Save uploaded image filename
+    if (req.file) {
+      req.body.image = req.file.filename;
+    }
+
     const {
       productCode,
       productName,
@@ -22,6 +32,7 @@ exports.createProduct = async (req, res) => {
       style,
       gender,
       description,
+      image,
       variants,
     } = req.body;
 
@@ -95,7 +106,7 @@ exports.createProduct = async (req, res) => {
       gender,
 
       description,
-
+      image,
       variants: finalVariants,
     });
 

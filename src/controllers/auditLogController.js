@@ -38,9 +38,7 @@ exports.createAuditLog = async (req, res) => {
       oldValues,
       newValues,
       ipAddress:
-        ipAddress ||
-        req.headers["x-forwarded-for"] ||
-        req.socket.remoteAddress,
+        ipAddress || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
       browser: req.headers["user-agent"],
       device: req.headers["sec-ch-ua-platform"] || "Unknown",
       status: status || "Success",
