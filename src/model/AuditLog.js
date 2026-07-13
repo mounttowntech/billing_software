@@ -119,7 +119,7 @@ const auditLogSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 /* ==========================================
@@ -127,30 +127,22 @@ const auditLogSchema = new mongoose.Schema(
 ========================================== */
 
 auditLogSchema.pre("save", async function () {
-  if (!this.isNew || this.logNumber) return next();
+  if (!this.isNew || this.logNumber) return;
 
-  try {
-    const lastLog = await this.constructor
-      .findOne()
-      .sort({ createdAt: -1 });
+  const lastLog = await this.constructor.findOne().sort({ createdAt: -1 });
 
-    let nextNumber = 1;
+  let nextNumber = 1;
 
-    if (lastLog && lastLog.logNumber) {
-      const num = parseInt(lastLog.logNumber.replace("AUD", ""), 10);
-      if (!isNaN(num)) {
-        nextNumber = num + 1;
-      }
+  if (lastLog?.logNumber) {
+    const num = parseInt(lastLog.logNumber.replace("AUD", ""), 10);
+
+    if (!isNaN(num)) {
+      nextNumber = num + 1;
     }
-
-    this.logNumber = `AUD${String(nextNumber).padStart(6, "0")}`;
-
-    
-  } catch (error) {
-    next(error);
   }
-});
 
+  this.logNumber = `AUD${String(nextNumber).padStart(6, "0")}`;
+});
 /* ==========================================
    Virtual
 ========================================== */
