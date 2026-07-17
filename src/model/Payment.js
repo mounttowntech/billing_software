@@ -23,6 +23,21 @@ new mongoose.Schema({
         ref:"GarmentCustomer"
     },
 
+    supplier:{
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"Supplier"
+},
+
+invoice:{
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"Invoice"
+},
+
+purchase:{
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"Purchase"
+},
+
     amount:{
         type:Number,
         required:true
@@ -35,7 +50,8 @@ new mongoose.Schema({
             "upi",
             "card",
             "wallet",
-            "bank"
+            "net_banking",
+            "cheque"
         ]
     },
 
@@ -44,7 +60,17 @@ new mongoose.Schema({
         default:Date.now
     },
 
-    remarks:String
+    remarks:String,
+
+    paymentStatus:{
+        type:String,
+        enum:[
+            "pending",
+            "completed",
+            "failed"
+        ],
+        default:"pending"
+    }
 
 },{
     timestamps:true,
