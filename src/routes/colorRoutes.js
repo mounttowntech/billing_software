@@ -2,11 +2,11 @@ const express = require("express");
 const router = express.Router();
 
 const {
-    createColor,
-    getColors,
-    getColorById,
-    updateColor,
-    deleteColor
+  createColor,
+  getColors,
+  getColorById,
+  updateColor,
+  deleteColor,
 } = require("../controllers/colorController");
 
 router.post("/create", createColor);
