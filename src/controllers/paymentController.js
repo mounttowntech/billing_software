@@ -50,14 +50,10 @@ exports.createPayment = async (req, res) => {
 exports.getPayments = async (req, res) => {
   try {
     const payments = await Payment.find()
-
       .populate("customer", "customerName phone")
+      .populate("supplier", "supplierName phone");
 
-      .sort({
-        createdAt: -1,
-      });
-
-    res.json({
+    res.status(200).json({
       success: true,
       count: payments.length,
       data: payments,
