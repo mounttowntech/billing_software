@@ -32,9 +32,10 @@ exports.createProduct = async (req, res) => {
       style,
       gender,
       description,
-      image,
       variants,
     } = req.body;
+
+    const image = req.file ? req.file.filename : "";
 
     /*
 |--------------------------------------------------------------------------
@@ -87,7 +88,7 @@ exports.createProduct = async (req, res) => {
 | Create Product
 |--------------------------------------------------------------------------
 */
-
+    console.log("image is :", image);
     const product = await GarmentProduct.create({
       productCode,
 
@@ -109,6 +110,9 @@ exports.createProduct = async (req, res) => {
       image,
       variants: finalVariants,
     });
+
+    console.log(product);
+    console.log("Saved image:", product.image);
 
     res.status(201).json({
       success: true,
@@ -309,33 +313,71 @@ exports.searchByBarcode = async (req, res) => {
 |--------------------------------------------------------------------------
 */
 
+// exports.updateProduct = async (req, res) => {
+//   try {
+//     const product = await GarmentProduct.findByIdAndUpdate(
+//       req.params.id,
+
+//       req.body,
+
+//       {
+//         new: true,
+//         runValidators: true,
+//       },
+//     )
+
+//       .populate("category")
+//       .populate("brand");
+
+//     res.status(200).json({
+//       success: true,
+
+//       message: "Product Updated Successfully",
+
+//       data: product,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.updateProduct = async (req, res) => {
   try {
+    const updateData = { ...req.body };
+
+    // Convert variants string to array
+    if (updateData.variants && typeof updateData.variants === "string") {
+      updateData.variants = JSON.parse(updateData.variants);
+    }
+
+    // Save uploaded image if a new one is selected
+    if (req.file) {
+      updateData.image = req.file.filename; // or req.file.path
+    }
+
     const product = await GarmentProduct.findByIdAndUpdate(
       req.params.id,
-
-      req.body,
-
+      updateData,
       {
         new: true,
         runValidators: true,
       },
     )
-
       .populate("category")
       .populate("brand");
 
     res.status(200).json({
       success: true,
-
       message: "Product Updated Successfully",
-
       data: product,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-
       message: error.message,
     });
   }

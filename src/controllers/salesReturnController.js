@@ -107,13 +107,7 @@ exports.updateSalesReturnById = async (req, res) => {
       });
     }
 
-    const {
-      product,
-      skuCode,
-      quantity,
-      refundAmount,
-      reason,
-    } = req.body;
+    const { product, skuCode, quantity, refundAmount, reason } = req.body;
 
     // Reverse old stock
     const oldProduct = await GarmentProduct.findById(salesReturn.product);
@@ -126,7 +120,7 @@ exports.updateSalesReturnById = async (req, res) => {
     }
 
     const oldVariant = oldProduct.variants.find(
-      (v) => v.skuCode === salesReturn.skuCode
+      (v) => v.skuCode === salesReturn.skuCode,
     );
 
     if (!oldVariant) {
@@ -142,7 +136,7 @@ exports.updateSalesReturnById = async (req, res) => {
 
     // Apply new stock
     const newProduct = await GarmentProduct.findById(
-      product || salesReturn.product
+      product || salesReturn.product,
     );
 
     if (!newProduct) {
@@ -153,7 +147,7 @@ exports.updateSalesReturnById = async (req, res) => {
     }
 
     const newVariant = newProduct.variants.find(
-      (v) => v.skuCode === (skuCode || salesReturn.skuCode)
+      (v) => v.skuCode === (skuCode || salesReturn.skuCode),
     );
 
     if (!newVariant) {
@@ -194,15 +188,13 @@ exports.updateSalesReturnById = async (req, res) => {
         skuCode: skuCode || salesReturn.skuCode,
         quantity: updatedQuantity,
         refundAmount:
-          refundAmount !== undefined
-            ? refundAmount
-            : salesReturn.refundAmount,
+          refundAmount !== undefined ? refundAmount : salesReturn.refundAmount,
         reason: reason || salesReturn.reason,
       },
       {
         new: true,
         runValidators: true,
-      }
+      },
     );
 
     res.status(200).json({
