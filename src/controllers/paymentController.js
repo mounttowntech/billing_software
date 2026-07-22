@@ -1,8 +1,39 @@
 const Payment = require("../model/Payment");
+const generatePaymentNo = require("../utils/generatePaymentNo");
+
+// exports.createPayment = async (req, res) => {
+//   try {
+//     const payment = await Payment.create(req.body);
+
+//     res.status(201).json({
+//       success: true,
+//       data: payment,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
 
 exports.createPayment = async (req, res) => {
   try {
-    const payment = await Payment.create(req.body);
+    const paymentData = { ...req.body };
+
+    Object.keys(paymentData).forEach((key) => {
+      if (
+        paymentData[key] === "" ||
+        paymentData[key] === null ||
+        paymentData[key] === undefined
+      ) {
+        delete paymentData[key];
+      }
+    });
+
+    paymentData.paymentNo = await generatePaymentNo();
+
+    const payment = await Payment.create(paymentData);
 
     res.status(201).json({
       success: true,
@@ -55,12 +86,47 @@ exports.getPaymentById = async (req, res) => {
   }
 };
 
+// exports.updatePayment = async (req, res) => {
+//   try {
+//     const payment = await Payment.findByIdAndUpdate(req.params.id, req.body, {
+//       new: true,
+//       runValidators: true,
+//     });
+
+//     res.json({
+//       success: true,
+//       data: payment,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.updatePayment = async (req, res) => {
   try {
-    const payment = await Payment.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    const paymentData = { ...req.body };
+
+    Object.keys(paymentData).forEach((key) => {
+      if (
+        paymentData[key] === "" ||
+        paymentData[key] === null ||
+        paymentData[key] === undefined
+      ) {
+        delete paymentData[key];
+      }
     });
+
+    const payment = await Payment.findByIdAndUpdate(
+      req.params.id,
+      paymentData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     res.json({
       success: true,

@@ -291,7 +291,28 @@ exports.getUserById = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      role,
+      password,
+    } = req.body;
+
+    const updateData = {
+      firstName,
+      lastName,
+      email,
+      phone,
+      role,
+    };
+
+    // Update password only if provided
+    if (password && password.trim() !== "") {
+      updateData.password = await bcrypt.hash(password, 10);
+    }
+    const user = await User.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
     });
 

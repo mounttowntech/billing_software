@@ -45,7 +45,14 @@ function percentChange(current, previous) {
   return Number((((current - previous) / previous) * 100).toFixed(2));
 }
 
-async function sumField(Model, dateField, startDate, endDate, sumExpr, extraMatch = {}) {
+async function sumField(
+  Model,
+  dateField,
+  startDate,
+  endDate,
+  sumExpr,
+  extraMatch = {},
+) {
   const result = await Model.aggregate([
     {
       $match: {
@@ -72,17 +79,38 @@ async function sumField(Model, dateField, startDate, endDate, sumExpr, extraMatc
 exports.getDashboardSummary = async (req, res) => {
   try {
     const { startDate, endDate } = resolveDateRange(req.query);
-    const { prevStartDate, prevEndDate } = getPreviousPeriod(startDate, endDate);
+    const { prevStartDate, prevEndDate } = getPreviousPeriod(
+      startDate,
+      endDate,
+    );
 
     const [totalSales, totalPurchases, totalExpenses] = await Promise.all([
-      sumField(GarmentInvoice, "invoiceDate", startDate, endDate, "$grandTotal"),
+      sumField(
+        GarmentInvoice,
+        "invoiceDate",
+        startDate,
+        endDate,
+        "$grandTotal",
+      ),
       sumField(Purchase, "purchaseDate", startDate, endDate, "$grandTotal"),
       sumField(Expense, "expenseDate", startDate, endDate, "$amount"),
     ]);
 
     const [prevSales, prevPurchases, prevExpenses] = await Promise.all([
-      sumField(GarmentInvoice, "invoiceDate", prevStartDate, prevEndDate, "$grandTotal"),
-      sumField(Purchase, "purchaseDate", prevStartDate, prevEndDate, "$grandTotal"),
+      sumField(
+        GarmentInvoice,
+        "invoiceDate",
+        prevStartDate,
+        prevEndDate,
+        "$grandTotal",
+      ),
+      sumField(
+        Purchase,
+        "purchaseDate",
+        prevStartDate,
+        prevEndDate,
+        "$grandTotal",
+      ),
       sumField(Expense, "expenseDate", prevStartDate, prevEndDate, "$amount"),
     ]);
 
@@ -136,7 +164,15 @@ exports.getSalesOverview = async (req, res) => {
     const thisMonthEnd = now;
 
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    const lastMonthEnd = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
 
     const buildDailySeries = async (start, end) => {
       const data = await GarmentInvoice.aggregate([
@@ -215,7 +251,8 @@ exports.getSalesByCategory = async (req, res) => {
     const result = data.map((d) => ({
       category: d._id,
       total: d.total,
-      percentage: grandTotal > 0 ? Number(((d.total / grandTotal) * 100).toFixed(2)) : 0,
+      percentage:
+        grandTotal > 0 ? Number(((d.total / grandTotal) * 100).toFixed(2)) : 0,
     }));
 
     return res.status(200).json({
@@ -276,25 +313,28 @@ exports.getTopSellingProducts = async (req, res) => {
 
 exports.getQuickStats = async (req, res) => {
   try {
-    const [totalCustomers, totalSuppliers, lowStockResult, dueResult] = await Promise.all([
-      GarmentCustomer.countDocuments({ status: "active" }),
-      Supplier.countDocuments({ status: true }),
+    const [totalCustomers, totalSuppliers, lowStockResult, dueResult] =
+      await Promise.all([
+        GarmentCustomer.countDocuments({ status: "active" }),
+        Supplier.countDocuments({ status: true }),
 
-      GarmentProduct.aggregate([
-        { $unwind: "$variants" },
-        {
-          $match: {
-            $expr: { $lte: ["$variants.currentStock", "$variants.minimumStock"] },
+        GarmentProduct.aggregate([
+          { $unwind: "$variants" },
+          {
+            $match: {
+              $expr: {
+                $lte: ["$variants.currentStock", "$variants.minimumStock"],
+              },
+            },
           },
-        },
-        { $count: "count" },
-      ]),
+          { $count: "count" },
+        ]),
 
-      GarmentInvoice.aggregate([
-        { $match: { dueAmount: { $gt: 0 } } },
-        { $group: { _id: null, total: { $sum: "$dueAmount" } } },
-      ]),
-    ]);
+        GarmentInvoice.aggregate([
+          { $match: { dueAmount: { $gt: 0 } } },
+          { $group: { _id: null, total: { $sum: "$dueAmount" } } },
+        ]),
+      ]);
 
     return res.status(200).json({
       success: true,
@@ -478,7 +518,11 @@ exports.getLowStockAlerts = async (req, res) => {
           currentStock: "$variants.currentStock",
           minimumStock: "$variants.minimumStock",
           status: {
-            $cond: [{ $eq: ["$variants.currentStock", 0] }, "Out of Stock", "Low Stock"],
+            $cond: [
+              { $eq: ["$variants.currentStock", 0] },
+              "Out of Stock",
+              "Low Stock",
+            ],
           },
         },
       },

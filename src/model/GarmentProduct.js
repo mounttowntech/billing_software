@@ -15,7 +15,10 @@ const variantSchema = new mongoose.Schema(
     gstPercentage: { type: Number, default: 5 },
     currentStock: { type: Number, default: 0 },
     minimumStock: { type: Number, default: 0 },
-    imageUrls: [String],
+    image: {
+      type: String,
+      default: "",
+    },
   },
   { _id: false },
 );
@@ -31,6 +34,10 @@ const garmentProductSchema = new mongoose.Schema(
     style: { type: mongoose.Schema.Types.ObjectId, ref: "GarmentStyle" },
     gender: { type: String, enum: ["Men", "Women", "Kids", "Unisex"] },
     description: String,
+    image: {
+      type: String,
+      default: "",
+    },
     variants: [variantSchema],
     totalStock: { type: Number, default: 0 },
     status: { type: Boolean, default: true },
@@ -41,7 +48,7 @@ const garmentProductSchema = new mongoose.Schema(
 garmentProductSchema.pre("save", function () {
   this.totalStock = this.variants.reduce(
     (total, variant) => total + (variant.currentStock || 0),
-    0
+    0,
   );
 });
 

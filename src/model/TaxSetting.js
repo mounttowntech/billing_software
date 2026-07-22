@@ -8,6 +8,10 @@ module.exports = mongoose.model(
       taxPercentage: Number,
       taxType: { type: String, enum: ["GST", "CGST", "SGST", "IGST"] },
       isDefault: Boolean,
+      isActive: {
+      type: Boolean,
+      default: true,
+    },
     },
     { timestamps: true, versionKey: false },
   ),
