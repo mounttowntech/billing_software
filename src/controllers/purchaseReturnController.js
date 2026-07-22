@@ -18,7 +18,15 @@ exports.createPurchaseReturn = async (req, res) => {
 
 exports.getPurchaseReturns = async (req, res) => {
   try {
-    const returns = await PurchaseReturn.find();
+    const returns = await PurchaseReturn.find()
+      .populate({
+        path: "purchase",
+        select: "purchaseNo", // or purchaseNumber (use your actual field name)
+      })
+      .populate({
+        path: "supplier",
+        select: "supplierName", // use your actual field name
+      });
 
     res.json({
       success: true,
