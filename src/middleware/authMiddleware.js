@@ -15,10 +15,11 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("Decoded Token:", decoded);
+    const user = await User.findById(decoded.id).select("password status");
+    console.log("User from DB:", user);
 
-    const user = await User.findById(decoded.id).select("-password");
-
-    if (!user || !user.isActive) {
+    if (!user || !user.status || user.status !== "active") {
       return res.status(401).json({
         success: false,
         message: "Unauthorized user",
