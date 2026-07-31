@@ -3,25 +3,33 @@ const mongoose = require("mongoose");
 
 const salesReturnSchema = new mongoose.Schema(
   {
-    returnNo: {
-      type: String,
-      unique: true,
-    },
+    // returnNo: {
+    //   type: String,
+    //   unique: true,
+    // },
 
-    invoice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "GarmentInvoice",
-    },
+    // invoice: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: "GarmentInvoice",
+    // },
 
-    customer: {
+    // customer: {
+    //   type: mongoose.Schema.Types.ObjectId,
+    //   ref: "GarmentCustomer",
+    // },
+
+    product: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "GarmentCustomer",
+      ref: "GarmentProduct",
     },
+    skuCode: String,
     
     returnDate: {
       type: Date,
       default: Date.now,
     },
+
+    quantity: Number,
 
     refundAmount: Number,
 
