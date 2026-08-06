@@ -11,6 +11,7 @@ const {
   forgotPassword,
   verifyOTP,
   changePassword,
+  resetPassword
 } = require("../controllers/userController");
 
 router.post("/register", register);
@@ -28,6 +29,10 @@ router.post("/login", login);
 router.post("/forgot-password", forgotPassword);
 
 router.post("/verify-otp", verifyOTP);
+router.post(
+  "/reset-password",
+  resetPassword
+);
 
 router.post("/change-password", verifyToken, changePassword);
 
