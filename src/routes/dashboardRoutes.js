@@ -14,10 +14,14 @@ const {
   getTopCustomers,
   getLowStockAlerts,
   getFullDashboard,
+  getAdminDashboard,
+  getManagerDashboard,
+  getCashierDashboard,
+  getInventoryDashboard,
 } = require("../controllers/dashboardController");
 
 // All routes are protected — dashboard should only be visible to logged-in users
-
+router.use(verifyToken);
 
 /* ==========================================
    Individual widget endpoints
@@ -55,7 +59,29 @@ router.get("/low-stock-alerts", getLowStockAlerts);
    fires all widgets in one round trip)
 ========================================== */
 
-// GET /api/dashboard/full?startDate=&endDate=
+// GET /api/dashboard/all?startDate=&endDate=
 router.get("/all", getFullDashboard);
+
+/* ==========================================
+   Role-specific dashboards
+   (one call each, matches the UI mockups: Admin / Manager /
+   Cashier / Inventory Staff)
+
+   TODO: if you have role-check middleware (e.g. requireRole("admin")),
+   add it after verifyToken on each of these so a cashier can't hit
+   /admin, etc. Left out here since the middleware name isn't known.
+========================================== */
+
+// GET /api/dashboard/admin?startDate=&endDate=
+router.get("/admin", getAdminDashboard);
+
+// GET /api/dashboard/manager?period=week|month
+router.get("/manager", getManagerDashboard);
+
+// GET /api/dashboard/cashier
+router.get("/cashier", getCashierDashboard);
+
+// GET /api/dashboard/inventory-staff
+router.get("/inventory-staff", getInventoryDashboard);
 
 module.exports = router;

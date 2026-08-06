@@ -1,127 +1,182 @@
-// GarmentInvoice production schema
 const mongoose = require("mongoose");
 
-const invoiceItemSchema = new mongoose.Schema({
-
-    product:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"GarmentProduct",
-        required:true
+const invoiceItemSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GarmentProduct",
+      required: true,
     },
 
-    skuCode:String,
-
-    barcode:String,
-
-    productName:String,
-
-    size:String,
-
-    color:String,
-
-    quantity:{
-        type:Number,
-        required:true
+    skuCode: {
+      type: String,
+      trim: true,
     },
 
-    price:{
-        type:Number,
-        required:true
+    barcode: {
+      type: String,
+      trim: true,
     },
 
-    discount:{
-        type:Number,
-        default:0
+    productName: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
-    gstPercentage:{
-        type:Number,
-        default:5
+    size: {
+      type: String,
+      trim: true,
     },
 
-    gstAmount:Number,
-
-    totalAmount:Number
-
-},{_id:false});
-
-const garmentInvoiceSchema =
-new mongoose.Schema({
-
-    invoiceNo:{
-        type:String,
-        unique:true,
-        required:true
+    color: {
+      type: String,
+      trim: true,
     },
 
-    customer:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:"GarmentCustomer"
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
     },
 
-    invoiceDate:{
-        type:Date,
-        default:Date.now
+    price: {
+      type: Number,
+      required: true,
+      min: 0,
     },
 
-    items:[invoiceItemSchema],
-
-    subTotal:Number,
-
-    discountAmount:{
-        type:Number,
-        default:0
+    discount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
-    gstAmount:Number,
-
-    grandTotal:Number,
-
-    paidAmount:{
-        type:Number,
-        default:0
+    gstPercentage: {
+      type: Number,
+      default: 5,
+      min: 0,
     },
 
-    returnAmount:{
-        type:Number,
-        default:0
+    gstAmount: {
+      type: Number,
+      default: 0,
     },
 
-    dueAmount:{
-        type:Number,
-        default:0
+    totalAmount: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const garmentInvoiceSchema = new mongoose.Schema(
+  {
+    invoiceNo: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
 
-    paymentMethod:{
-        type:String,
-        enum:[
-            "cash",
-            "upi",
-            "card",
-            "wallet",
-            "credit"
-        ]
+    customer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GarmentCustomer",
+      default: null,
     },
 
-    paymentStatus:{
-        type:String,
-        enum:[
-            "paid",
-            "partial",
-            "pending"
-        ],
-        default:"pending"
+    // Employee/User who created the invoice
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee", // Change to "User" if your authentication uses User model
+      required: true,
     },
 
-    remarks:String
+    invoiceDate: {
+      type: Date,
+      default: Date.now,
+    },
 
-},{
-    timestamps:true,
-    versionKey:false
-});
+    items: {
+      type: [invoiceItemSchema],
+      required: true,
+      validate: [(arr) => arr.length > 0, "Invoice must contain at least one item"],
+    },
 
-module.exports =
-mongoose.model(
-"GarmentInvoice",
-garmentInvoiceSchema
+    subTotal: {
+      type: Number,
+      default: 0,
+    },
+
+    discountAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    gstAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    grandTotal: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+
+    paidAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    dueAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    returnAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: [
+        "cash",
+        "upi",
+        "card",
+        "wallet",
+        "credit",
+      ],
+      default: "cash",
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: [
+        "paid",
+        "partial",
+        "pending",
+      ],
+      default: "pending",
+    },
+
+    remarks: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+  },
+  {
+    timestamps: true,
+    versionKey: false,
+  }
+);
+
+module.exports = mongoose.model(
+  "GarmentInvoice",
+  garmentInvoiceSchema
 );
