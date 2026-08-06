@@ -267,7 +267,7 @@ exports.createSalesReturn = async (req, res) => {
 };
 exports.getSalesReturns = async (req, res) => {
   try {
-    const returns = await SalesReturn.find();
+    const returns = await SalesReturn.find().populate("product", "productName _id");
 
     res.json({
       success: true,

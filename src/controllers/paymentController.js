@@ -19,6 +19,7 @@ exports.createPayment = async (req, res) => {
       customerName,
       customerEmail,
       customerPhone,
+      paymentMethod
     } = req.body;
 
     // Validate Amount
@@ -35,28 +36,59 @@ exports.createPayment = async (req, res) => {
     // Cashfree Order ID
     const cashfreeOrderId = `ORDER_${Date.now()}`;
 
+    const paymentData = {
+  paymentNo,
+  type,
+  amount,
+  remarks,
+
+  customerName,
+  customerEmail,
+  customerPhone,
+
+  paymentMethod,
+  paymentStatus: "pending",
+  cashfreeOrderId,
+
+  createdBy: req.user?._id,
+};
+
+// Sale & Refund Payment
+if (type === "sale" || type === "refund") {
+  paymentData.customer = customer;
+  paymentData.invoice = invoice;
+}
+
+// Purchase Payment
+if (type === "purchase") {
+  paymentData.supplier = supplier;
+  paymentData.purchase = purchase;
+}
+
+const payment = await Payment.create(paymentData);
+
     // Save Pending Payment
-    const payment = await Payment.create({
-      paymentNo,
-      type,
-      customer,
-      supplier,
-      invoice,
-      purchase,
-      amount,
-      remarks,
+    // const payment = await Payment.create({
+    //   paymentNo,
+    //   type,
+    //   customer,
+    //   supplier,
+    //   invoice,
+    //   purchase,
+    //   amount,
+    //   remarks,
 
-      customerName,
-      customerEmail,
-      customerPhone,
+    //   customerName,
+    //   customerEmail,
+    //   customerPhone,
 
-      paymentMethod: "cashfree",
-      paymentStatus: "pending",
+    //   paymentMethod: "cashfree",
+    //   paymentStatus: "pending",
 
-      cashfreeOrderId,
+    //   cashfreeOrderId,
 
-      createdBy: req.user?._id,
-    });
+    //   createdBy: req.user?._id,
+    // });
 
     // Create Cashfree Order
     const response = await axios.post(
@@ -88,7 +120,8 @@ exports.createPayment = async (req, res) => {
 
         order_meta: {
           return_url:
-            "http://localhost:3000/payment-success?order_id={order_id}",
+            `${process.env.FRONTEND_URL}/payments?order_id={order_id}`
+            ,
         },
       },
       {
