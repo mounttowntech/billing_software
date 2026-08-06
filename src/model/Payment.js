@@ -41,9 +41,9 @@ const paymentSchema = new mongoose.Schema(
     // =====================================
 
     invoice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Invoice",
-    },
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "GarmentInvoice"
+},
 
     purchase: {
       type: mongoose.Schema.Types.ObjectId,

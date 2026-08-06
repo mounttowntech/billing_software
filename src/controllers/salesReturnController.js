@@ -8,25 +8,192 @@ const createStockLedger = require("../utils/stockLedger");
 
 // Create Sales Return
 
+
+
+
+
 exports.createSalesReturn = async (req, res) => {
+
   try {
-    const { product, skuCode, quantity, refundAmount, reason } = req.body;
+
+    const {
+
+      product,
+
+      skuCode,
+
+      quantity,
+
+      refundAmount,
+
+      reason,
+
+    } = req.body;
+
+
+
+    // ===============================
+
+    // Validation
+
+    // ===============================
+
+
+
+    if (!product) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        message: "Product is required.",
+
+      });
+
+    }
+
+
+
+    if (!skuCode) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        message: "SKU Code is required.",
+
+      });
+
+    }
+
+
+
+    if (!quantity || quantity <= 0) {
+
+      return res.status(400).json({
+
+        success: false,
+
+        message: "Quantity must be greater than zero.",
+
+      });
+
+    }
+
+
+
+    // ===============================
+
+    // Find Product
+
+    // ===============================
+
+
 
     const item = await GarmentProduct.findById(product);
 
-    const variant = item.variants.find((v) => v.skuCode === skuCode);
+
+
+    if (!item) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        message: "Product not found.",
+
+      });
+
+    }
+
+
+
+    // ===============================
+
+    // Find Variant
+
+    // ===============================
+
+
+
+    const variant = item.variants.find(
+
+      (v) =>
+
+        String(v.skuCode).trim().toUpperCase() ===
+
+        String(skuCode).trim().toUpperCase()
+
+    );
+
+
+
+    if (!variant) {
+
+      return res.status(404).json({
+
+        success: false,
+
+        message: "Variant not found.",
+
+        receivedSku: skuCode,
+
+        availableSkus: item.variants.map((v) => v.skuCode),
+
+      });
+
+    }
+
+
+
+    // ===============================
+
+    // Stock Calculation
+
+    // ===============================
+
+
 
     const stock = stockCalculation(
+
       variant.currentStock,
+
       quantity,
-      "sales_return",
+
+      "sales_return"
+
     );
+
+
 
     variant.currentStock = stock.afterStock;
 
+
+
+    item.totalStock = item.variants.reduce(
+
+      (sum, v) => sum + (v.currentStock || 0),
+
+      0
+
+    );
+
+
+
     await item.save();
 
+
+
+    // ===============================
+
+    // Stock Ledger
+
+    // ===============================
+
+
+
     await createStockLedger({
+
       product: item._id,
 
       skuCode,
@@ -41,29 +208,63 @@ exports.createSalesReturn = async (req, res) => {
 
       referenceNumber: "SALES_RETURN",
 
-      remarks: "Sales Return",
+      remarks: reason || "Sales Return",
+
     });
+
+
+
+    // ===============================
+
+    // Sales Return
+
+    // ===============================
+
+
 
     const salesReturn = await SalesReturn.create({
+
       product,
+
       skuCode,
+
       quantity,
+
       refundAmount,
+
       reason,
+
     });
 
-    res.status(201).json({
+
+
+    return res.status(201).json({
+
       success: true,
-      data: salesReturn,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
 
+      message: "Sales return created successfully.",
+
+      data: salesReturn,
+
+    });
+
+  } catch (error) {
+
+    console.error("Sales Return Error:", error);
+
+
+
+    return res.status(500).json({
+
+      success: false,
+
+      message: error.message,
+
+    });
+
+  }
+
+};
 exports.getSalesReturns = async (req, res) => {
   try {
     const returns = await SalesReturn.find();
