@@ -47,4 +47,5 @@ app.use("/api/measurements", require("./src/routes/measurementRoutes"));
 app.use("/api/suppliers", require("./src/routes/supplierRoutes"));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/dashboard",require("./src/routes/dashboardRoutes"));
+app.use("/api/reports",require("./src/routes/reportRoutes"));
 module.exports = app;

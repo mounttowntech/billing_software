@@ -41,15 +41,15 @@ const paymentSchema = new mongoose.Schema(
     // =====================================
 
     invoice: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Invoice",
-    },
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "GarmentInvoice"
+},
 
     purchase: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Purchase",
     },
-
+  
     // =====================================
     // Amount
     // =====================================
@@ -89,13 +89,7 @@ const paymentSchema = new mongoose.Schema(
 
     paymentStatus: {
       type: String,
-      enum: [
-        "pending",
-        "completed",
-        "failed",
-        "cancelled",
-        "refunded",
-      ],
+      enum: ["pending", "completed", "failed", "cancelled", "refunded"],
       default: "pending",
     },
 
@@ -176,12 +170,7 @@ const paymentSchema = new mongoose.Schema(
 
     refundStatus: {
       type: String,
-      enum: [
-        "none",
-        "pending",
-        "processed",
-        "failed",
-      ],
+      enum: ["none", "pending", "processed", "failed"],
       default: "none",
     },
 
@@ -202,7 +191,7 @@ const paymentSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 /* =====================================

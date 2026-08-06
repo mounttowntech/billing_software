@@ -8,14 +8,7 @@ const generateToken = require("../utils/generateToken");
 
 exports.register = async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      role,
-    } = req.body;
+    const { firstName, lastName, email, phone, password, role } = req.body;
 
     const existingUser = await User.findOne({
       $or: [{ email }, { phone }],
@@ -134,7 +127,6 @@ exports.login = async (req, res) => {
 };
 exports.forgotPassword = async (req, res) => {
   try {
-
     const { email } = req.body;
 
     const user = await User.findOne({ email });
@@ -142,19 +134,15 @@ exports.forgotPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
-    const otp =
-      Math.floor(
-        100000 + Math.random() * 900000
-      ).toString();
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     user.resetPasswordOTP = otp;
 
-    user.resetPasswordOTPExpire =
-      new Date(Date.now() + 10 * 60 * 1000);
+    user.resetPasswordOTPExpire = new Date(Date.now() + 10 * 60 * 1000);
 
     await user.save();
 
@@ -168,21 +156,18 @@ exports.forgotPassword = async (req, res) => {
           <h1>${otp}</h1>
           <p>Valid for 10 minutes only.</p>
         </div>
-      `
+      `,
     });
 
     res.status(200).json({
       success: true,
-      message: "OTP sent to registered email"
+      message: "OTP sent to registered email",
     });
-
   } catch (error) {
-
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
-
   }
 };
 exports.verifyOTP = async (req, res) => {
@@ -224,13 +209,26 @@ exports.verifyOTP = async (req, res) => {
     });
   }
 };
+
 exports.changePassword = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { currentPassword, newPassword, confirmPassword } = req.body;
 
-    const user = await User.findOne({
-      email,
-    }).select("+password");
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and confirm password do not match",
+      });
+    }
+
+    const user = await User.findById(req.user._id).select("+password");
 
     if (!user) {
       return res.status(404).json({
@@ -239,31 +237,21 @@ exports.changePassword = async (req, res) => {
       });
     }
 
-    if (user.resetPasswordOTP !== otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
-    }
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
 
-    if (user.resetPasswordOTPExpire < Date.now()) {
+    if (!isMatch) {
       return res.status(400).json({
         success: false,
-        message: "OTP expired",
+        message: "Current password is incorrect",
       });
     }
 
     user.password = newPassword;
 
-    user.resetPasswordOTP = undefined;
-
-    user.resetPasswordOTPExpire = undefined;
-
     await user.save();
 
     res.status(200).json({
       success: true,
-
       message: "Password changed successfully",
     });
   } catch (error) {
@@ -291,14 +279,7 @@ exports.getUserById = async (req, res) => {
 
 exports.updateUser = async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      role,
-      password,
-    } = req.body;
+    const { firstName, lastName, email, phone, role, password } = req.body;
 
     const updateData = {
       firstName,

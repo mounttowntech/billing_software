@@ -172,39 +172,22 @@ exports.deleteAuditLog = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const auditLog = await AuditLog.findById(id);
+    const auditLog = await AuditLog.findByIdAndDelete(id);
 
     if (!auditLog) {
       return res.status(404).json({
         success: false,
-
         message: "Audit Log not found",
       });
     }
 
-    if (auditLog.isDeleted) {
-      return res.status(400).json({
-        success: false,
-
-        message: "Audit Log is already deleted.",
-      });
-    }
-
-    auditLog.isDeleted = true;
-
-    await auditLog.save();
-
     res.status(200).json({
       success: true,
-
       message: "Audit Log deleted successfully.",
-
-      data: auditLog,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-
       message: error.message,
     });
   }
