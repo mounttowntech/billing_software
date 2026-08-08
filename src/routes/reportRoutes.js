@@ -51,7 +51,11 @@ router.get(
 //   allowRoles("admin", "manager"),
   reportController.exportReport
 );
-
+router.get(
+  "/export-pdf",
+  verifyToken,
+  reportController.exportPDFReport
+);
 // --- Manager Dashboard "Recent Sales" widget ---
 router.get(
   "/manager-dashboard",
