@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const ExcelJS = require("exceljs");
-
+const PDFDocument = require("pdfkit");
+const PDFTable = require("pdfkit-table");
 // Models
 const GarmentInvoice = require("../model/GarmentInvoice");
 const Purchase = require("../model/Purchase");
@@ -2186,6 +2187,7 @@ function resolveDateRange(req){
 
 
 
+
 // ============================================================
 // Date Format Helper
 // ============================================================
@@ -2500,5 +2502,471 @@ exports.getManagerDashboard = async (req, res) => {
 
     });
 
+  }
+};
+// ============================================================================
+// GET /api/reports/export-pdf
+// Professional Sales & Financial PDF Report
+// ============================================================================
+
+exports.exportPDFReport = async (req, res) => {
+  try {
+    const { fromDate, toDate } = resolveDateRange(req);
+
+    // ============================================================
+    // Get Ledger Data
+    // ============================================================
+
+    const pipeline = buildLedgerPipeline(
+      fromDate,
+      toDate
+    );
+
+    const rows = await Expense.aggregate(pipeline);
+
+    // ============================================================
+    // Summary Calculation
+    // ============================================================
+
+    let totalSales = 0;
+    let totalPurchases = 0;
+    let totalExpenses = 0;
+    let totalPayments = 0;
+
+    rows.forEach((row) => {
+      const amount = Number(row.netAmount || 0);
+
+      switch (row.type) {
+        case "Sale":
+          totalSales += amount;
+          break;
+
+        case "Purchase":
+          totalPurchases += Math.abs(amount);
+          break;
+
+        case "Expense":
+          totalExpenses += Math.abs(amount);
+          break;
+
+        case "Payment":
+          totalPayments += Math.abs(amount);
+          break;
+      }
+    });
+
+    const netProfit =
+      totalSales -
+      totalPurchases -
+      totalExpenses;
+
+    // ============================================================
+    // Create PDF
+    // ============================================================
+
+    const doc = new PDFDocument({
+      size: "A4",
+      layout: "landscape",
+      margins: {
+        top: 40,
+        bottom: 40,
+        left: 30,
+        right: 30,
+      },
+      bufferPages: true,
+    });
+
+    // ============================================================
+    // Response Headers
+    // ============================================================
+
+    const fileName =
+      `Sales_Report_${Date.now()}.pdf`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/pdf"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileName}"`
+    );
+
+    // Pipe PDF directly to browser
+    doc.pipe(res);
+
+    // ============================================================
+    // Company Header
+    // ============================================================
+
+    doc
+      .fontSize(22)
+      .font("Helvetica-Bold")
+      .text(
+        "GARMENT BILLING SOFTWARE",
+        {
+          align: "center",
+        }
+      );
+
+    doc.moveDown(0.3);
+
+    doc
+      .fontSize(15)
+      .font("Helvetica")
+      .text(
+        "Sales & Financial Report",
+        {
+          align: "center",
+        }
+      );
+
+    doc.moveDown(0.8);
+
+    // ============================================================
+    // Report Information
+    // ============================================================
+
+    doc
+      .fontSize(10)
+      .font("Helvetica");
+
+    doc.text(
+      `Report From : ${formatDate(fromDate)}`,
+      40,
+      doc.y
+    );
+
+    doc.text(
+      `Report To   : ${formatDate(toDate)}`,
+      300,
+      doc.y - 12
+    );
+
+    doc.text(
+      `Generated On: ${formatDate(new Date())}`,
+      560,
+      doc.y - 12
+    );
+
+    doc.moveDown(1.2);
+
+    // ============================================================
+    // Horizontal Line
+    // ============================================================
+
+    doc
+      .moveTo(30, doc.y)
+      .lineTo(812, doc.y)
+      .stroke();
+
+    doc.moveDown(1);
+
+    // ============================================================
+    // SUMMARY TITLE
+    // ============================================================
+
+    doc
+      .fontSize(14)
+      .font("Helvetica-Bold")
+      .text("SUMMARY");
+
+    doc.moveDown(0.5);
+
+    // ============================================================
+    // Summary Table
+    // ============================================================
+
+    const summaryTable = {
+      headers: [
+        "Total Sales",
+        "Total Purchases",
+        "Total Expenses",
+        "Total Payments",
+        "Net Profit",
+      ],
+
+      rows: [
+        [
+          formatCurrency(totalSales),
+          formatCurrency(totalPurchases),
+          formatCurrency(totalExpenses),
+          formatCurrency(totalPayments),
+          formatCurrency(netProfit),
+        ],
+      ],
+    };
+
+    await doc.table(summaryTable, {
+      width: 750,
+
+      prepareHeader: () => {
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(9);
+      },
+
+      prepareRow: () => {
+        doc
+          .font("Helvetica")
+          .fontSize(9);
+      },
+
+      padding: 6,
+
+      columnSpacing: 5,
+    });
+
+    doc.moveDown(1);
+
+    // ============================================================
+    // LEDGER TITLE
+    // ============================================================
+
+    doc
+      .fontSize(14)
+      .font("Helvetica-Bold")
+      .text("LEDGER");
+
+    doc.moveDown(0.5);
+
+    // ============================================================
+    // Ledger Table Data
+    // ============================================================
+
+    const ledgerRows = rows.map((row) => {
+      const amount =
+        Number(row.netAmount || 0);
+
+      let debit = 0;
+      let credit = 0;
+
+      if (
+        row.type === "Purchase" ||
+        row.type === "Expense"
+      ) {
+        debit = Math.abs(amount);
+      }
+
+      if (
+        row.type === "Sale" ||
+        row.type === "Payment"
+      ) {
+        credit = Math.abs(amount);
+      }
+
+      return [
+        row.type || "-",
+
+        row.referenceNo || "-",
+
+        formatDate(row.date),
+
+        row.party || "-",
+
+        formatCurrency(debit),
+
+        formatCurrency(credit),
+
+        formatCurrency(amount),
+      ];
+    });
+
+    // ============================================================
+    // Ledger Table
+    // ============================================================
+
+    await doc.table(
+      {
+        headers: [
+          "Type",
+          "Reference No",
+          "Date",
+          "Party",
+          "Debit",
+          "Credit",
+          "Net Amount",
+        ],
+
+        rows: ledgerRows,
+      },
+      {
+        width: 750,
+
+        padding: 5,
+
+        columnSpacing: 3,
+
+        prepareHeader: () => {
+          doc
+            .font("Helvetica-Bold")
+            .fontSize(8);
+        },
+
+        prepareRow: (
+          row,
+          indexColumn,
+          indexRow,
+          rectRow,
+          rectCell
+        ) => {
+          doc
+            .font("Helvetica")
+            .fontSize(7.5);
+
+          // Page break protection
+          if (
+            rectRow &&
+            rectRow.y + rectRow.height >
+              doc.page.height - 50
+          ) {
+            doc.addPage();
+          }
+        },
+      }
+    );
+
+    // ============================================================
+    // Grand Total
+    // ============================================================
+
+    doc.moveDown(1);
+
+    const totalDebit = rows.reduce(
+      (sum, row) => {
+        if (
+          row.type === "Purchase" ||
+          row.type === "Expense"
+        ) {
+          return (
+            sum +
+            Math.abs(
+              Number(row.netAmount || 0)
+            )
+          );
+        }
+
+        return sum;
+      },
+      0
+    );
+
+    const totalCredit = rows.reduce(
+      (sum, row) => {
+        if (
+          row.type === "Sale" ||
+          row.type === "Payment"
+        ) {
+          return (
+            sum +
+            Math.abs(
+              Number(row.netAmount || 0)
+            )
+          );
+        }
+
+        return sum;
+      },
+      0
+    );
+
+    // ============================================================
+    // Grand Total Table
+    // ============================================================
+
+    await doc.table(
+      {
+        headers: [
+          "",
+          "",
+          "",
+          "GRAND TOTAL",
+          "Debit",
+          "Credit",
+          "Net Amount",
+        ],
+
+        rows: [
+          [
+            "",
+            "",
+            "",
+            "",
+            formatCurrency(totalDebit),
+            formatCurrency(totalCredit),
+            formatCurrency(netProfit),
+          ],
+        ],
+      },
+      {
+        width: 750,
+
+        padding: 6,
+
+        prepareHeader: () => {
+          doc
+            .font("Helvetica-Bold")
+            .fontSize(8);
+        },
+
+        prepareRow: () => {
+          doc
+            .font("Helvetica-Bold")
+            .fontSize(8);
+        },
+      }
+    );
+
+    // ============================================================
+    // Footer
+    // ============================================================
+
+    const range =
+      doc.bufferedPageRange();
+
+    for (
+      let i = range.start;
+      i < range.start + range.count;
+      i++
+    ) {
+      doc.switchToPage(i);
+
+      doc
+        .fontSize(8)
+        .font("Helvetica")
+        .text(
+          `Generated by Garment Billing Software | Page ${i + 1} of ${range.count}`,
+          30,
+          doc.page.height - 25,
+          {
+            align: "center",
+            width: 750,
+          }
+        );
+    }
+
+    // ============================================================
+    // Finish PDF
+    // ============================================================
+
+    doc.end();
+
+  } catch (error) {
+    console.error(
+      "Export PDF Report Error:",
+      error
+    );
+
+    // Important:
+    // Don't send JSON if PDF streaming has already started.
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to generate PDF report",
+        error: error.message,
+      });
+    }
   }
 };
