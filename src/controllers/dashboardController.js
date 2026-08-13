@@ -644,7 +644,7 @@ exports.getRecentTransactions = async (req, res) => {
         status: p.paymentStatus,
       })),
       ...payments.map((p) => ({
-        type: "Payment",
+        type: p?.type || "Payment",
         referenceNo: p.paymentNo,
         date: p.paymentDate,
         party: p.customer ? p.customer.customerName : "-",

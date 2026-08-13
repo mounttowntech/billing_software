@@ -1,7 +1,7 @@
-const Payment = require("../model/paymentModel");
-const Invoice = require("../model/invoiceModel");
-const Purchase = require("../model/purchaseModel");
-const Customer = require("../model/customerModel");
+const Payment = require("../model/Payment");
+const Invoice = require("../model/GarmentInvoice");
+const Purchase = require("../model/Purchase");
+const Customer = require("../model/GarmentCustomer");
 const Supplier = require("../model/supplierModel");
 const { round2, getPaymentStatus } = require("../service/gstService");
 

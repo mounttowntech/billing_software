@@ -2,6 +2,13 @@ const mongoose = require("mongoose");
 
 const variantSchema = new mongoose.Schema(
   {
+    // Unique ID for this variant
+    variantCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     skuCode: { type: String, unique: true },
     barcode: { type: String, unique: true },
     size: {

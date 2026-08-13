@@ -1,5 +1,5 @@
-const Product = require("../model/productModel");
-const ProductVariant = require("../model/productVariant");
+const Product = require("../model/GarmentProduct");
+// const ProductVariant = require("../model/productVariant");
 const StockLedger = require("../model/stockledger");
 
 const stockInTypes = ["purchase_in", "sale_return_in", "adjustment_in"];
@@ -32,8 +32,8 @@ exports.changeStock = async ({
   let afterStock = 0;
 
   if (variantId) {
-    const variant = await ProductVariant.findById(variantId);
-
+    // const variant = await ProductVariant.findById(variantId);
+const variant = {};
     if (!variant) {
       throw new Error("Variant not found");
     }
@@ -93,4 +93,114 @@ exports.consumeRecipe = async ({ menuProduct, quantity, referenceId, createdBy }
       createdBy,
     });
   }
+};
+
+exports.reduceStockForSale = async ({
+  items,
+  referenceId,
+  referenceNo,
+  userId,
+}) => {
+  if (!Array.isArray(items) || items.length === 0) {
+    throw new Error("No items found for stock reduction");
+  }
+
+  for (const item of items) {
+    const quantity = Number(item.quantity);
+
+    if (!quantity || quantity <= 0) {
+      throw new Error(
+        `Invalid quantity for product ${item.product}`
+      );
+    }
+
+    // ============================================
+    // GARMENT VARIANT STOCK
+    // ============================================
+
+    if (item.variant) {
+      const variant = await ProductVariant.findById(
+        item.variant
+      );
+
+      if (!variant) {
+        throw new Error(
+          `Product variant not found: ${item.variant}`
+        );
+      }
+
+      if (variant.stockQuantity < quantity) {
+        throw new Error(
+          `Insufficient stock for SKU ${variant.sku}`
+        );
+      }
+
+      const previousStock = variant.stockQuantity;
+
+      variant.stockQuantity -= quantity;
+
+      await variant.save();
+
+      await StockLedger.create({
+        product: item.product,
+        variant: item.variant,
+
+        transactionType: "sale",
+
+        quantity: -quantity,
+
+        previousStock,
+        newStock: variant.stockQuantity,
+
+        referenceId,
+        referenceNo,
+
+        createdBy: userId,
+      });
+
+      continue;
+    }
+
+    // ============================================
+    // NORMAL PRODUCT STOCK
+    // ============================================
+
+    const product = await Product.findById(item.product);
+
+    if (!product) {
+      throw new Error(
+        `Product not found: ${item.product}`
+      );
+    }
+
+    if (product.stockQuantity < quantity) {
+      throw new Error(
+        `Insufficient stock for ${product.name}`
+      );
+    }
+
+    const previousStock = product.stockQuantity;
+
+    product.stockQuantity -= quantity;
+
+    await product.save();
+
+    await StockLedger.create({
+      product: item.product,
+
+      transactionType: "sale",
+
+      quantity: -quantity,
+
+      previousStock,
+      newStock: product.stockQuantity,
+
+      referenceId,
+      referenceNo,
+
+      createdBy: userId,
+    });
+  }
+
+  return true;
 };

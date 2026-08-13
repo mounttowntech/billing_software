@@ -74,12 +74,15 @@ exports.createProduct = async (req, res) => {
 
       const barcode = variant.barcode || generateBarcode();
 
+      const variantCode = variant?.variantCode || `VAR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
       finalVariants.push({
         ...variant,
 
         skuCode,
 
         barcode,
+        variantCode,
       });
     }
 

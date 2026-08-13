@@ -65,6 +65,65 @@ const paymentSchema = new mongoose.Schema(
       default: "INR",
     },
 
+    items: [
+      {
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "GarmentProduct",
+          required: true,
+        },
+
+        variant: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "ProductVariant",
+          default: null,
+        },
+
+        productName: {
+          type: String,
+          trim: true,
+        },
+
+        skuCode: {
+          type: String,
+          trim: true,
+        },
+
+        barcode: {
+          type: String,
+          trim: true,
+        },
+
+        size: {
+          type: String,
+          trim: true,
+        },
+
+        color: {
+          type: String,
+          trim: true,
+        },
+
+        quantity: {
+          type: Number,
+          required: true,
+          min: 1,
+        },
+
+        price: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+
+        amount: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+      },
+    ],
+
     // =====================================
     // Payment Method
     // =====================================
@@ -80,7 +139,7 @@ const paymentSchema = new mongoose.Schema(
         "cheque",
         "cashfree",
       ],
-      default: "cashfree",
+      default: "cash",
     },
 
     // =====================================

@@ -1,5 +1,4 @@
-const StockLedger =
-require("../model/StockLedger");
+const StockLedger = require("../model/StockLedger");
 
 const createStockLedger =
 async ({
