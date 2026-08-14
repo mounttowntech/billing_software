@@ -57,7 +57,7 @@ console.log("product", product);
     // ==========================================
 
     if (item.variant) {
-      const variant = product.variants.id(item.variant);
+      const variant = product.variants.find((v) => v.variantCode === item.variant);
 console.log("variant_product", variant);
       if (!variant) {
         throw new Error(
@@ -69,7 +69,7 @@ console.log("variant_product", variant);
       // Check Variant Stock
       // ========================================
 
-      if (variant.stockQuantity < quantity) {
+      if (variant.currentStock < quantity) {
         throw new Error(
           `Insufficient stock for SKU ${variant.skuCode}`
         );
@@ -79,7 +79,7 @@ console.log("variant_product", variant);
       // Reduce Variant Stock
       // ========================================
 
-      variant.stockQuantity -= quantity;
+      variant.currentStock -= quantity;
 
       // ========================================
       // Save Product
@@ -93,7 +93,7 @@ console.log("variant_product", variant);
     // ==========================================
 
     else {
-      if (product.stockQuantity < quantity) {
+      if (product.currentStock < quantity) {
         throw new Error(
           `Insufficient stock for ${product.name}`
         );
@@ -103,7 +103,7 @@ console.log("variant_product", variant);
       // Reduce Product Stock
       // ========================================
 
-      product.stockQuantity -= quantity;
+      product.currentStock -= quantity;
 
       await product.save();
     }

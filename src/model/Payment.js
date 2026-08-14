@@ -74,8 +74,8 @@ const paymentSchema = new mongoose.Schema(
         },
 
         variant: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "ProductVariant",
+          type: String,
+          trim: true,
           default: null,
         },
 

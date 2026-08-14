@@ -190,10 +190,13 @@ const payment = await Payment.create(paymentData);
 
           let productName = product.name;
 
-          // Variant
+          // ========================================
+          // VARIANT
+          // ========================================
+
           if (item.variant) {
-            const variant = await ProductVariant.findById(
-              item.variant
+            const variant = product.variants?.find(
+              (v) => v.variantCode === item.variant
             );
 
             if (!variant) {
@@ -203,8 +206,24 @@ const payment = await Payment.create(paymentData);
               });
             }
 
-            productName =
-              `${product.name} - ${variant.sku}`;
+            // Product + variant details for invoice
+            productName = product.name;
+
+            if (variant.color || variant.size) {
+              productName += " - ";
+
+              if (variant.color) {
+                productName += variant.color;
+              }
+
+              if (variant.color && variant.size) {
+                productName += " / ";
+              }
+
+              if (variant.size) {
+                productName += variant.size;
+              }
+            }
           }
 
           invoiceItems.push({

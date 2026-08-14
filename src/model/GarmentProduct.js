@@ -11,9 +11,14 @@ const variantSchema = new mongoose.Schema(
     },
     skuCode: { type: String, unique: true },
     barcode: { type: String, unique: true },
+    // size: {
+    //   type: String,
+    //   enum: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"],
+    // },
     size: {
       type: String,
-      enum: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"],
+      trim: true,
+      default: "",
     },
     color: { type: String, required: true },
     purchasePrice: { type: Number, default: 0 },
