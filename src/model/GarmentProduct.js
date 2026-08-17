@@ -31,6 +31,16 @@ const variantSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    discountType: {
+    type: String,
+    enum: ["percentage", "amount"],
+    default: "percentage"
+  },
+
+  discountValue: {
+    type: Number,
+    default: 0
+  }
   },
   { _id: false },
 );

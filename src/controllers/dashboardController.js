@@ -314,6 +314,47 @@ async function getRecentStockActivities(limit) {
    (Total Sales, Total Purchases, Gross Profit, Net Profit)
 ========================================== */
 
+const calculateCOGS = async (startDate, endDate) => {
+  const invoices = await GarmentInvoice.find({
+    invoiceDate: {
+      $gte: startDate,
+      $lte: endDate,
+    },
+  }).lean();
+
+  let totalCOGS = 0;
+
+  for (const invoice of invoices) {
+    for (const item of invoice.items || []) {
+      const product = await GarmentProduct.findById(item.product).lean();
+
+      if (!product) continue;
+
+      let purchasePrice = 0;
+
+      // Variant product
+      if (item.variant) {
+        const variant = product.variants?.find(
+          (v) => v.variantCode === item.variant
+        );
+
+        if (variant) {
+          purchasePrice = Number(variant.purchasePrice || 0);
+        }
+      }
+
+      // Normal product
+      else {
+        purchasePrice = Number(product.purchasePrice || 0);
+      }
+
+      totalCOGS += purchasePrice * Number(item.quantity || 0);
+    }
+  }
+
+  return totalCOGS;
+};
+
 exports.getDashboardSummary = async (req, res) => {
   try {
     const { startDate, endDate } = resolveDateRange(req.query);
@@ -321,8 +362,7 @@ exports.getDashboardSummary = async (req, res) => {
       startDate,
       endDate,
     );
-
-    const [totalSales, totalPurchases, totalExpenses] = await Promise.all([
+    const [totalSales, totalCOGS, totalPurchases, totalExpenses] = await Promise.all([
       sumField(
         GarmentInvoice,
         "invoiceDate",
@@ -330,11 +370,13 @@ exports.getDashboardSummary = async (req, res) => {
         endDate,
         "$grandTotal",
       ),
+      // COGS = actual cost of products sold
+    calculateCOGS(startDate, endDate),
       sumField(Purchase, "purchaseDate", startDate, endDate, "$grandTotal"),
       sumField(Expense, "expenseDate", startDate, endDate, "$amount"),
     ]);
 
-    const [prevSales, prevPurchases, prevExpenses] = await Promise.all([
+    const [prevSales, prevCOGS, prevPurchases, prevExpenses] = await Promise.all([
       sumField(
         GarmentInvoice,
         "invoiceDate",
@@ -342,6 +384,9 @@ exports.getDashboardSummary = async (req, res) => {
         prevEndDate,
         "$grandTotal",
       ),
+      // COGS = actual cost of products sold
+    calculateCOGS(prevStartDate, prevEndDate),
+
       sumField(
         Purchase,
         "purchaseDate",
@@ -352,12 +397,11 @@ exports.getDashboardSummary = async (req, res) => {
       sumField(Expense, "expenseDate", prevStartDate, prevEndDate, "$amount"),
     ]);
 
-    const grossProfit = totalSales - totalPurchases;
+    const grossProfit = totalSales - totalCOGS;
     const netProfit = grossProfit - totalExpenses;
 
-    const prevGrossProfit = prevSales - prevPurchases;
+    const prevGrossProfit = prevSales - prevCOGS;
     const prevNetProfit = prevGrossProfit - prevExpenses;
-
     return res.status(200).json({
       success: true,
       message: "Dashboard summary fetched successfully",
@@ -367,9 +411,9 @@ exports.getDashboardSummary = async (req, res) => {
           amount: totalSales,
           changePercent: percentChange(totalSales, prevSales),
         },
-        totalPurchases: {
-          amount: totalPurchases,
-          changePercent: percentChange(totalPurchases, prevPurchases),
+        totalCOGS: {
+          amount: totalCOGS,
+          changePercent: percentChange(totalCOGS, prevCOGS),
         },
         grossProfit: {
           amount: grossProfit,

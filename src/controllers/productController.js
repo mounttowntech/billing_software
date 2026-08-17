@@ -78,6 +78,16 @@ exports.createProduct = async (req, res) => {
 
       const variantCode = variant?.variantCode || generateVariantCode();
 
+      let discountType =
+        variant.discountType !== undefined
+          ? variant.discountType
+          : "percentage";
+
+        let discountValue =
+        discountType == "percentage"
+          ? Number(variant.discountPercentage || 0)
+          : Number(variant?.discountAmount || 0);
+
       finalVariants.push({
         ...variant,
 
@@ -85,6 +95,8 @@ exports.createProduct = async (req, res) => {
 
         barcode,
         variantCode,
+        discountType,
+        discountValue,
       });
     }
 
@@ -552,6 +564,21 @@ exports.updateProduct = async (req, res) => {
             ? Number(variant.minimumStock)
             : Number(existingVariant?.minimumStock || 0);
 
+            // check discount type and value
+        const discountType =
+          variant.discountType !== undefined
+            ? variant.discountType
+            : existingVariant?.discountType || "percentage";
+
+            if(discountType === "percentage" && (variant.discountPercentage < 0 || variant.discountPercentage > 100)) {
+              throw new Error("Invalid discount percentage. Please enter a value between 0 and 100.");
+            }
+
+        const discountValue =
+          discountType == "percentage"
+            ? Number(variant.discountPercentage || existingVariant?.discountPercentage || 0)
+            : Number(variant?.discountAmount || 0);
+
         // ============================================================
         // 9. CREATE UPDATED VARIANT
         // ============================================================
@@ -570,6 +597,8 @@ exports.updateProduct = async (req, res) => {
           barcode,
           currentStock,
           minimumStock,
+          discountType,
+          discountValue,
         });
       }
 console.log("updateDfinalVariantsata.variants", finalVariants);
