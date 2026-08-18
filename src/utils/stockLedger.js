@@ -9,7 +9,8 @@ async ({
     beforeStock,
     afterStock,
     referenceNumber,
-    remarks
+    remarks,
+    industryType
 }) => {
 
     await StockLedger.create({
@@ -28,7 +29,9 @@ async ({
 
         referenceNumber,
 
-        remarks
+        remarks,
+
+        industryType: industryType || "garments",
 
     });
 

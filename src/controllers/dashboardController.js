@@ -8,6 +8,7 @@ const GarmentProduct = require("../model/GarmentProduct");
 const GarmentCustomer = require("../model/GarmentCustomer");
 const Supplier = require("../model/supplierModel");
 const GarmentCategory = require("../model/GarmentCategory");
+const { json } = require("express");
 
 // ASSUMPTION: these models may not exist yet in your project.
 // They're required defensively so the file still loads even if they're missing.
@@ -255,11 +256,11 @@ async function getStaffPresentCount() {
 // exists yet. Swap in the real model once you add one.
 async function buildStockActivitiesFallback(limit) {
   const [purchases, sales] = await Promise.all([
-    Purchase.find()
+    Purchase.find().populate("items.product", "productName")
       .sort({ purchaseDate: -1 })
       .limit(limit)
       .select("purchaseNo purchaseDate items"),
-    GarmentInvoice.find()
+    GarmentInvoice.find().populate("items.product", "productName")
       .sort({ invoiceDate: -1 })
       .limit(limit)
       .select("invoiceNo invoiceDate items"),
@@ -272,7 +273,7 @@ async function buildStockActivitiesFallback(limit) {
       activities.push({
         reference: p.purchaseNo,
         type: "Stock In",
-        item: it.productName || "-",
+        item: it?.product?.productName || "-",
         quantity: it.quantity || 0,
         date: p.purchaseDate,
       });
