@@ -1,8 +1,10 @@
-const mongoose = require("mongoose");
 const ExcelJS = require("exceljs");
 const PDFDocument = require("pdfkit");
-const PDFTable = require("pdfkit-table");
-// Models
+
+// ============================================================
+// MODELS
+// ============================================================
+
 const GarmentInvoice = require("../model/GarmentInvoice");
 const Purchase = require("../model/Purchase");
 const Expense = require("../model/Expense");
@@ -10,24 +12,55 @@ const Payment = require("../model/Payment");
 const GarmentProduct = require("../model/GarmentProduct");
 const GarmentCustomer = require("../model/GarmentCustomer");
 const Supplier = require("../model/supplierModel");
-const StockLedger = require("../model/StockLedger");
 
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
+// ============================================================
+// HELPER: DATE RANGE
+// ============================================================
 
 function resolveDateRange(req) {
   const { from, to } = req.query;
 
-  const toDate = to ? new Date(to) : new Date();
-  toDate.setHours(23, 59, 59, 999);
+  let fromDate;
+  let toDate;
 
-  const fromDate = from
-    ? new Date(from)
-    : new Date(toDate.getTime() - 29 * 24 * 60 * 60 * 1000);
+  // ----------------------------------------------------------
+  // FROM
+  // ----------------------------------------------------------
 
-  fromDate.setHours(0, 0, 0, 0);
+  if (from) {
+    fromDate = new Date(`${from}T00:00:00.000Z`);
+  } else {
+    fromDate = new Date();
+    fromDate.setUTCHours(0, 0, 0, 0);
+    fromDate.setUTCDate(fromDate.getUTCDate() - 29);
+  }
+
+  // ----------------------------------------------------------
+  // TO
+  // ----------------------------------------------------------
+
+  if (to) {
+    toDate = new Date(`${to}T23:59:59.999Z`);
+  } else {
+    toDate = new Date();
+    toDate.setUTCHours(23, 59, 59, 999);
+  }
+
+  // ----------------------------------------------------------
+  // VALIDATION
+  // ----------------------------------------------------------
+
+  if (isNaN(fromDate.getTime())) {
+    throw new Error(`Invalid from date: ${from}`);
+  }
+
+  if (isNaN(toDate.getTime())) {
+    throw new Error(`Invalid to date: ${to}`);
+  }
+
+  if (fromDate > toDate) {
+    throw new Error("From date cannot be greater than To date");
+  }
 
   return {
     fromDate,
@@ -35,20 +68,16 @@ function resolveDateRange(req) {
   };
 }
 
-
-// ============================================================================
+// ============================================================
+// HELPER: PREVIOUS PERIOD
+// ============================================================
 
 function previousPeriod(fromDate, toDate) {
+  const diff = toDate.getTime() - fromDate.getTime();
 
-  const diff =
-    toDate.getTime() -
-    fromDate.getTime();
+  const prevTo = new Date(fromDate.getTime() - 1);
 
-  const prevTo =
-    new Date(fromDate.getTime() - 1);
-
-  const prevFrom =
-    new Date(prevTo.getTime() - diff);
+  const prevFrom = new Date(prevTo.getTime() - diff);
 
   return {
     prevFrom,
@@ -56,59 +85,56 @@ function previousPeriod(fromDate, toDate) {
   };
 }
 
-
-// ============================================================================
+// ============================================================
+// HELPER: PERCENTAGE CHANGE
+// ============================================================
 
 function pctChange(current, previous) {
-
-  if (!previous)
+  if (!previous) {
     return current > 0 ? 100 : 0;
+  }
 
   return Number(
-    (
-      ((current - previous) /
-        previous) *
-      100
-    ).toFixed(2)
+    (((current - previous) / previous) * 100).toFixed(2)
   );
-
 }
 
-
-// ============================================================================
+// ============================================================
+// HELPER: FORMAT CURRENCY
+// ============================================================
 
 function formatCurrency(amount) {
-
-  return Number(amount || 0).toLocaleString(
-    "en-IN",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }
-  );
-
+  return Number(amount || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
-
-// ============================================================================
+// ============================================================
+// HELPER: FORMAT DATE
+// ============================================================
 
 function formatDate(date) {
+  if (!date) {
+    return "-";
+  }
 
-  if (!date) return "";
+  const d = new Date(date);
 
-  return new Date(date).toLocaleDateString(
-    "en-IN",
-    {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }
-  );
+  if (isNaN(d.getTime())) {
+    return "-";
+  }
 
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const year = d.getUTCFullYear();
+
+  return `${day}-${month}-${year}`;
 }
 
-
-// ============================================================================
+// ============================================================
+// HELPER: SUM IN RANGE
+// ============================================================
 
 async function sumInRange(
   Model,
@@ -117,7 +143,6 @@ async function sumInRange(
   toDate,
   extraMatch = {}
 ) {
-
   const result = await Model.aggregate([
     {
       $match: {
@@ -139,23 +164,17 @@ async function sumInRange(
   ]);
 
   return result[0]?.total || 0;
-
 }
-// ============================================================================
-// 1. GET /api/reports/summary
-// Dashboard Summary
-// ============================================================================
-// ============================================================================
-// Ledger Pipeline Builder
-// ============================================================================
+
+// ============================================================
+// LEDGER PIPELINE
+// ============================================================
 
 function buildLedgerPipeline(fromDate, toDate) {
-
   return [
-
-    // ==========================
-    // Expense Collection Base
-    // ==========================
+    // ========================================================
+    // EXPENSE
+    // ========================================================
 
     {
       $match: {
@@ -166,235 +185,169 @@ function buildLedgerPipeline(fromDate, toDate) {
       },
     },
 
-
     {
       $project: {
-
         _id: 0,
 
         type: {
           $literal: "Expense",
         },
 
-        referenceNo:
-          "$expenseNo",
+        referenceNo: "$expenseNo",
 
-        date:
-          "$createdAt",
+        date: "$createdAt",
 
-        party:
-          "$category",
+        party: "$category",
 
         netAmount: {
-          $multiply: [
-            "$amount",
-            -1,
-          ],
+          $multiply: ["$amount", -1],
         },
-
       },
-
     },
 
-
-    // ==========================
-    // Add Sales
-    // ==========================
+    // ========================================================
+    // SALES
+    // ========================================================
 
     {
       $unionWith: {
-
         coll: "garmentinvoices",
 
         pipeline: [
-
           {
             $match: {
-
               createdAt: {
                 $gte: fromDate,
                 $lte: toDate,
               },
-
             },
-
           },
 
           {
             $project: {
+              _id: 0,
 
-              _id:0,
-
-              type:{
-                $literal:"Sale",
+              type: {
+                $literal: "Sale",
               },
 
-              referenceNo:
-                "$invoiceNo",
+              referenceNo: "$invoiceNo",
 
-              date:
-                "$invoiceDate",
+              date: "$invoiceDate",
 
-              party:
-                "$customerName",
+              party: "$customerName",
 
-              netAmount:
-                "$grandTotal",
-
+              netAmount: "$grandTotal",
             },
-
           },
-
         ],
-
       },
-
     },
 
-
-    // ==========================
-    // Add Purchase
-    // ==========================
+    // ========================================================
+    // PURCHASE
+    // ========================================================
 
     {
       $unionWith: {
+        coll: "purchases",
 
-        coll:"purchases",
-
-        pipeline:[
-
+        pipeline: [
           {
-            $match:{
-
-              createdAt:{
-                $gte:fromDate,
-                $lte:toDate,
+            $match: {
+              createdAt: {
+                $gte: fromDate,
+                $lte: toDate,
               },
-
             },
-
           },
 
-
           {
-            $project:{
+            $project: {
+              _id: 0,
 
-              _id:0,
-
-              type:{
-                $literal:"Purchase",
+              type: {
+                $literal: "Purchase",
               },
 
+              referenceNo: "$purchaseNo",
 
-              referenceNo:
-                "$purchaseNo",
+              date: "$purchaseDate",
 
+              party: "$supplierName",
 
-              date:
-                "$purchaseDate",
-
-
-              party:
-                "$supplierName",
-
-
-              netAmount:{
-                $multiply:[
-                  "$grandTotal",
-                  -1
-                ],
+              netAmount: {
+                $multiply: ["$grandTotal", -1],
               },
-
-
             },
-
           },
-
         ],
-
       },
-
     },
 
-
-    // ==========================
-    // Add Payments
-    // ==========================
+    // ========================================================
+    // PAYMENTS
+    // ========================================================
 
     {
-      $unionWith:{
+      $unionWith: {
+        coll: "payments",
 
-        coll:"payments",
-
-        pipeline:[
-
+        pipeline: [
           {
-            $match:{
-
-              createdAt:{
-                $gte:fromDate,
-                $lte:toDate,
+            $match: {
+              createdAt: {
+                $gte: fromDate,
+                $lte: toDate,
               },
-
             },
-
           },
 
-
           {
-            $project:{
+            $project: {
+              _id: 0,
 
-              _id:0,
-
-              type:{
-                $literal:"Payment",
+              type: {
+                $literal: "Payment",
               },
 
+              referenceNo: "$paymentNo",
 
-              referenceNo:
-                "$paymentNo",
+              date: "$paymentDate",
 
+              party: "$partyName",
 
-              date:
-                "$paymentDate",
-
-
-              party:
-                "$partyName",
-
-
-              netAmount:
-                "$amount",
-
+              netAmount: "$amount",
             },
-
           },
-
         ],
-
       },
-
     },
 
-
-    // ==========================
-    // Sort Ledger
-    // ==========================
+    // ========================================================
+    // SORT
+    // ========================================================
 
     {
-      $sort:{
-        date:1,
+      $sort: {
+        date: 1,
       },
     },
-
-
   ];
-
 }
+
+// ============================================================
+// 1. REPORT SUMMARY
+// ============================================================
+
 exports.getReportsSummary = async (req, res) => {
   try {
     const { fromDate, toDate } = resolveDateRange(req);
-    const { prevFrom, prevTo } = previousPeriod(fromDate, toDate);
+
+    const { prevFrom, prevTo } = previousPeriod(
+      fromDate,
+      toDate
+    );
 
     const [
       totalSales,
@@ -406,8 +359,6 @@ exports.getReportsSummary = async (req, res) => {
       lowStockItems,
       recentSales,
     ] = await Promise.all([
-
-      // Sales
       sumInRange(
         GarmentInvoice,
         "grandTotal",
@@ -422,7 +373,6 @@ exports.getReportsSummary = async (req, res) => {
         prevTo
       ),
 
-      // Purchases
       sumInRange(
         Purchase,
         "grandTotal",
@@ -437,7 +387,6 @@ exports.getReportsSummary = async (req, res) => {
         prevTo
       ),
 
-      // Expenses
       sumInRange(
         Expense,
         "amount",
@@ -452,27 +401,19 @@ exports.getReportsSummary = async (req, res) => {
         prevTo
       ),
 
-      // Low Stock
       GarmentProduct.countDocuments({
         $expr: {
-          $lte: [
-            "$stockQty",
-            "$reorderLevel",
-          ],
+          $lte: ["$stockQty", "$reorderLevel"],
         },
       }),
 
-      // Recent Sales
       GarmentInvoice.find({
         createdAt: {
           $gte: fromDate,
           $lte: toDate,
         },
       })
-        .populate(
-          "customer",
-          "customerName"
-        )
+        .populate("customer", "customerName")
         .sort({
           invoiceDate: -1,
         })
@@ -511,9 +452,7 @@ exports.getReportsSummary = async (req, res) => {
 
       totalPurchases: {
         value: totalPurchases,
-        formatted: formatCurrency(
-          totalPurchases
-        ),
+        formatted: formatCurrency(totalPurchases),
         change: pctChange(
           totalPurchases,
           previousPurchases
@@ -522,9 +461,7 @@ exports.getReportsSummary = async (req, res) => {
 
       totalExpenses: {
         value: totalExpenses,
-        formatted: formatCurrency(
-          totalExpenses
-        ),
+        formatted: formatCurrency(totalExpenses),
         change: pctChange(
           totalExpenses,
           previousExpenses
@@ -533,9 +470,7 @@ exports.getReportsSummary = async (req, res) => {
 
       netProfit: {
         value: netProfit,
-        formatted: formatCurrency(
-          netProfit
-        ),
+        formatted: formatCurrency(netProfit),
         change: pctChange(
           netProfit,
           previousNetProfit
@@ -544,56 +479,44 @@ exports.getReportsSummary = async (req, res) => {
 
       lowStockItems,
 
-      recentSales: recentSales.map(
-        (invoice) => ({
-          invoiceNo:
-            invoice.invoiceNo,
+      recentSales: recentSales.map((invoice) => ({
+        invoiceNo: invoice.invoiceNo,
 
-          customer:
-            invoice.customer
-              ?.customerName ||
-            "Walk-in",
+        customer:
+          invoice.customer?.customerName ||
+          "Walk-in",
 
-          date:
-            invoice.invoiceDate,
+        date: invoice.invoiceDate,
 
-          total:
-            invoice.grandTotal,
+        total: invoice.grandTotal,
 
-          paid:
-            invoice.paidAmount,
+        paid: invoice.paidAmount,
 
-          due:
-            invoice.dueAmount,
+        due: invoice.dueAmount,
 
-          paymentMethod:
-            invoice.paymentMethod,
+        paymentMethod:
+          invoice.paymentMethod,
 
-          paymentStatus:
-            invoice.paymentStatus,
-        })
-      ),
+        paymentStatus:
+          invoice.paymentStatus,
+      })),
     });
   } catch (err) {
     console.error(err);
 
     res.status(500).json({
       success: false,
-      message:
-        "Failed to load dashboard summary",
+      message: "Failed to load dashboard summary",
       error: err.message,
     });
   }
 };
-// ============================================================================
-// 2. GET /api/reports/analytics
-// Professional Dashboard Analytics
-// ============================================================================
 
-exports.getReportsAnalytics = async (
-  req,
-  res
-) => {
+// ============================================================
+// 2. REPORT ANALYTICS
+// ============================================================
+
+exports.getReportsAnalytics = async (req, res) => {
   try {
     const [
       totalProducts,
@@ -601,14 +524,10 @@ exports.getReportsAnalytics = async (
       totalSuppliers,
       totalInvoices,
       lowStockItems,
-
       salesDue,
-
       purchaseDue,
-
       totalInventoryValue,
     ] = await Promise.all([
-
       GarmentProduct.countDocuments(),
 
       GarmentCustomer.countDocuments(),
@@ -619,10 +538,7 @@ exports.getReportsAnalytics = async (
 
       GarmentProduct.countDocuments({
         $expr: {
-          $lte: [
-            "$stockQty",
-            "$reorderLevel",
-          ],
+          $lte: ["$stockQty", "$reorderLevel"],
         },
       }),
 
@@ -634,9 +550,11 @@ exports.getReportsAnalytics = async (
             },
           },
         },
+
         {
           $group: {
             _id: null,
+
             total: {
               $sum: "$dueAmount",
             },
@@ -652,9 +570,11 @@ exports.getReportsAnalytics = async (
             },
           },
         },
+
         {
           $group: {
             _id: null,
+
             total: {
               $sum: "$dueAmount",
             },
@@ -666,6 +586,7 @@ exports.getReportsAnalytics = async (
         {
           $group: {
             _id: null,
+
             total: {
               $sum: {
                 $multiply: [
@@ -686,26 +607,19 @@ exports.getReportsAnalytics = async (
       purchaseDue[0]?.total || 0;
 
     const inventoryValue =
-      totalInventoryValue[0]?.total ||
-      0;
+      totalInventoryValue[0]?.total || 0;
 
     res.status(200).json({
       success: true,
 
       analytics: {
-
         totalProducts,
-
         totalCustomers,
-
         totalSuppliers,
-
         totalInvoices,
-
         lowStockItems,
 
         customerDue,
-
         supplierDue,
 
         totalDue:
@@ -715,21 +629,16 @@ exports.getReportsAnalytics = async (
         inventoryValue,
 
         formatted: {
-
           customerDue:
-            formatCurrency(
-              customerDue
-            ),
+            formatCurrency(customerDue),
 
           supplierDue:
-            formatCurrency(
-              supplierDue
-            ),
+            formatCurrency(supplierDue),
 
           totalDue:
             formatCurrency(
               customerDue +
-                supplierDue
+              supplierDue
             ),
 
           inventoryValue:
@@ -744,26 +653,29 @@ exports.getReportsAnalytics = async (
 
     res.status(500).json({
       success: false,
-      message:
-        "Failed to load dashboard analytics",
+      message: "Failed to load dashboard analytics",
       error: err.message,
     });
   }
 };
-// ============================================================================
-// 3. GET /api/reports/sales-trend
-// Daily / Weekly / Monthly Sales Trend
-// ============================================================================
+
+// ============================================================
+// 3. SALES TREND
+// ============================================================
 
 exports.getSalesTrend = async (req, res) => {
   try {
-    const { fromDate, toDate } = resolveDateRange(req);
+    const { fromDate, toDate } =
+      resolveDateRange(req);
 
-    const period = req.query.period || "daily";
-    const { prevFrom, prevTo } = previousPeriod(
-      fromDate,
-      toDate
-    );
+    const period =
+      req.query.period || "daily";
+
+    const { prevFrom, prevTo } =
+      previousPeriod(
+        fromDate,
+        toDate
+      );
 
     let dateFormat = "%d-%m-%Y";
 
@@ -775,7 +687,10 @@ exports.getSalesTrend = async (req, res) => {
       dateFormat = "%Y";
     }
 
-    const buildTrend = async (start, end) => {
+    const buildTrend = async (
+      start,
+      end
+    ) => {
       return await GarmentInvoice.aggregate([
         {
           $match: {
@@ -785,6 +700,7 @@ exports.getSalesTrend = async (req, res) => {
             },
           },
         },
+
         {
           $group: {
             _id: {
@@ -793,19 +709,25 @@ exports.getSalesTrend = async (req, res) => {
                 date: "$invoiceDate",
               },
             },
+
             totalSales: {
               $sum: "$grandTotal",
             },
+
             totalInvoices: {
               $sum: 1,
             },
+
             totalItems: {
               $sum: {
-                $size: "$items",
+                $size: {
+                  $ifNull: ["$items", []],
+                },
               },
             },
           },
         },
+
         {
           $sort: {
             _id: 1,
@@ -816,19 +738,32 @@ exports.getSalesTrend = async (req, res) => {
 
     const [current, previous] =
       await Promise.all([
-        buildTrend(fromDate, toDate),
-        buildTrend(prevFrom, prevTo),
+        buildTrend(
+          fromDate,
+          toDate
+        ),
+
+        buildTrend(
+          prevFrom,
+          prevTo
+        ),
       ]);
 
-    const totalSales = current.reduce(
-      (sum, row) => sum + row.totalSales,
-      0
-    );
+    const totalSales =
+      current.reduce(
+        (sum, row) =>
+          sum +
+          Number(row.totalSales || 0),
+        0
+      );
 
-    const totalInvoices = current.reduce(
-      (sum, row) => sum + row.totalInvoices,
-      0
-    );
+    const totalInvoices =
+      current.reduce(
+        (sum, row) =>
+          sum +
+          Number(row.totalInvoices || 0),
+        0
+      );
 
     res.json({
       success: true,
@@ -848,7 +783,7 @@ exports.getSalesTrend = async (req, res) => {
       previous,
     });
   } catch (err) {
-    console.log(err);
+    console.error(err);
 
     res.status(500).json({
       success: false,
@@ -857,278 +792,253 @@ exports.getSalesTrend = async (req, res) => {
     });
   }
 };
-// ============================================================================
-// 4. GET /api/reports/sales-by-category
-// Product Wise Sales Report
-// ============================================================================
+
+// ============================================================
+// 4. SALES BY CATEGORY / PRODUCT
+// ============================================================
 
 exports.getSalesByCategory = async (req, res) => {
   try {
+    const { fromDate, toDate } =
+      resolveDateRange(req);
 
-    const { fromDate, toDate } = resolveDateRange(req);
-
-    const categories = await GarmentInvoice.aggregate([
-
-      {
-        $match: {
-          createdAt: {
-            $gte: fromDate,
-            $lte: toDate,
+    const categories =
+      await GarmentInvoice.aggregate([
+        {
+          $match: {
+            createdAt: {
+              $gte: fromDate,
+              $lte: toDate,
+            },
           },
         },
-      },
 
-      {
-        $unwind: "$items",
-      },
-
-      {
-        $group: {
-
-          _id: "$items.product",
-
-          productName: {
-            $first: "$items.productName",
-          },
-
-          skuCode: {
-            $first: "$items.skuCode",
-          },
-
-          barcode: {
-            $first: "$items.barcode",
-          },
-
-          quantitySold: {
-            $sum: "$items.quantity",
-          },
-
-          totalSales: {
-            $sum: "$items.totalAmount",
-          },
-
-          totalGST: {
-            $sum: "$items.gstAmount",
-          },
-
-          invoiceCount: {
-            $sum: 1,
-          },
-
+        {
+          $unwind: "$items",
         },
-      },
 
-      {
-        $lookup: {
+        {
+          $group: {
+            _id: "$items.product",
 
-          from: "garmentproducts",
+            productName: {
+              $first:
+                "$items.productName",
+            },
 
-          localField: "_id",
+            skuCode: {
+              $first:
+                "$items.skuCode",
+            },
 
-          foreignField: "_id",
+            barcode: {
+              $first:
+                "$items.barcode",
+            },
 
-          as: "product",
+            quantitySold: {
+              $sum:
+                "$items.quantity",
+            },
 
+            totalSales: {
+              $sum:
+                "$items.totalAmount",
+            },
+
+            totalGST: {
+              $sum:
+                "$items.gstAmount",
+            },
+
+            invoiceCount: {
+              $sum: 1,
+            },
+          },
         },
-      },
 
-      {
-        $project: {
+        {
+          $lookup: {
+            from: "garmentproducts",
 
-          _id: 0,
+            localField: "_id",
 
-          productId: "$_id",
+            foreignField: "_id",
 
-          productName: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.productName",
-                  0,
-                ],
-              },
-              "$productName",
-            ],
+            as: "product",
           },
-
-          skuCode: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.skuCode",
-                  0,
-                ],
-              },
-              "$skuCode",
-            ],
-          },
-
-          barcode: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.barcode",
-                  0,
-                ],
-              },
-              "$barcode",
-            ],
-          },
-
-          quantitySold: 1,
-
-          totalSales: 1,
-
-          totalGST: 1,
-
-          invoiceCount: 1,
-
-          averagePrice: {
-
-            $cond: [
-
-              {
-                $eq: [
-                  "$quantitySold",
-                  0,
-                ],
-              },
-
-              0,
-
-              {
-                $divide: [
-                  "$totalSales",
-                  "$quantitySold",
-                ],
-              },
-
-            ],
-
-          },
-
-          currentStock: {
-
-            $ifNull: [
-
-              {
-                $arrayElemAt: [
-                  "$product.stockQty",
-                  0,
-                ],
-              },
-
-              0,
-
-            ],
-
-          },
-
-          reorderLevel: {
-
-            $ifNull: [
-
-              {
-                $arrayElemAt: [
-                  "$product.reorderLevel",
-                  0,
-                ],
-              },
-
-              0,
-
-            ],
-
-          },
-
         },
-      },
 
-      {
-        $sort: {
-          totalSales: -1,
+        {
+          $project: {
+            _id: 0,
+
+            productId: "$_id",
+
+            productName: {
+              $ifNull: [
+                {
+                  $arrayElemAt: [
+                    "$product.productName",
+                    0,
+                  ],
+                },
+                "$productName",
+              ],
+            },
+
+            skuCode: {
+              $ifNull: [
+                {
+                  $arrayElemAt: [
+                    "$product.skuCode",
+                    0,
+                  ],
+                },
+                "$skuCode",
+              ],
+            },
+
+            barcode: {
+              $ifNull: [
+                {
+                  $arrayElemAt: [
+                    "$product.barcode",
+                    0,
+                  ],
+                },
+                "$barcode",
+              ],
+            },
+
+            quantitySold: 1,
+
+            totalSales: 1,
+
+            totalGST: 1,
+
+            invoiceCount: 1,
+
+            averagePrice: {
+              $cond: [
+                {
+                  $eq: [
+                    "$quantitySold",
+                    0,
+                  ],
+                },
+
+                0,
+
+                {
+                  $divide: [
+                    "$totalSales",
+                    "$quantitySold",
+                  ],
+                },
+              ],
+            },
+
+            currentStock: {
+              $ifNull: [
+                {
+                  $arrayElemAt: [
+                    "$product.stockQty",
+                    0,
+                  ],
+                },
+                0,
+              ],
+            },
+
+            reorderLevel: {
+              $ifNull: [
+                {
+                  $arrayElemAt: [
+                    "$product.reorderLevel",
+                    0,
+                  ],
+                },
+                0,
+              ],
+            },
+          },
         },
-      },
 
-    ]);
+        {
+          $sort: {
+            totalSales: -1,
+          },
+        },
+      ]);
 
+    const totalSales =
+      categories.reduce(
+        (sum, item) =>
+          sum +
+          Number(
+            item.totalSales || 0
+          ),
+        0
+      );
 
+    const totalQuantity =
+      categories.reduce(
+        (sum, item) =>
+          sum +
+          Number(
+            item.quantitySold || 0
+          ),
+        0
+      );
 
-    // ======================================================
-    // Overall Summary
-    // ======================================================
+    const totalGST =
+      categories.reduce(
+        (sum, item) =>
+          sum +
+          Number(
+            item.totalGST || 0
+          ),
+        0
+      );
 
-    const totalSales = categories.reduce(
-      (sum, item) => sum + item.totalSales,
-      0
-    );
+    const result =
+      categories.map((item) => ({
+        ...item,
 
-    const totalQuantity = categories.reduce(
-      (sum, item) => sum + item.quantitySold,
-      0
-    );
+        sharePercentage:
+          totalSales === 0
+            ? 0
+            : Number(
+                (
+                  (item.totalSales /
+                    totalSales) *
+                  100
+                ).toFixed(2)
+              ),
 
-    const totalGST = categories.reduce(
-      (sum, item) => sum + item.totalGST,
-      0
-    );
-
-
-
-    // ======================================================
-    // Percentage Calculation
-    // ======================================================
-
-    const result = categories.map((item) => ({
-
-      ...item,
-
-      sharePercentage:
-
-        totalSales === 0
-          ? 0
-          : Number(
-              (
-                (item.totalSales /
-                  totalSales) *
-                100
-              ).toFixed(2)
-            ),
-
-      averagePrice:
-        Number(
-          item.averagePrice.toFixed(2)
-        ),
-
-    }));
-
-
-
-    // ======================================================
-    // Top Selling Product
-    // ======================================================
+        averagePrice:
+          Number(
+            Number(
+              item.averagePrice || 0
+            ).toFixed(2)
+          ),
+      }));
 
     const topProduct =
       result.length > 0
         ? result[0]
         : null;
 
-
-
     res.status(200).json({
-
       success: true,
 
       reportPeriod: {
-
         from: fromDate,
-
         to: toDate,
-
       },
 
       summary: {
-
         totalProducts:
           result.length,
 
@@ -1147,150 +1057,168 @@ exports.getSalesByCategory = async (req, res) => {
           formatCurrency(
             totalGST
           ),
-
       },
 
       topProduct,
 
       categories: result,
-
     });
-
   } catch (err) {
-
-    console.log(err);
+    console.error(err);
 
     res.status(500).json({
-
       success: false,
-
-      message:
-        "Failed to load sales by category",
-
+      message: "Failed to load sales by category",
       error: err.message,
-
     });
-
   }
 };
-// ============================================================================
-// 5. GET /api/reports/sales-summary
-// Professional Ledger Summary
-// ============================================================================
+
+// ============================================================
+// 5. SALES SUMMARY / LEDGER
+// ============================================================
 
 exports.getSalesSummary = async (req, res) => {
   try {
-    const { fromDate, toDate } = resolveDateRange(req);
+    const { fromDate, toDate } =
+      resolveDateRange(req);
 
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
-    const skip = (page - 1) * limit;
+    const page =
+      Number(req.query.page) || 1;
 
-    // =====================================================
-    // Ledger Data
-    // =====================================================
+    const limit =
+      Number(req.query.limit) || 20;
 
-    const pipeline = buildLedgerPipeline(fromDate, toDate);
+    const skip =
+      (page - 1) * limit;
 
-    pipeline.push(
-      {
-        $facet: {
-          data: [
-            { $skip: skip },
-            { $limit: limit }
-          ],
+    const pipeline =
+      buildLedgerPipeline(
+        fromDate,
+        toDate
+      );
 
-          totals: [
-            {
-              $group: {
-                _id: null,
+    pipeline.push({
+      $facet: {
+        data: [
+          {
+            $skip: skip,
+          },
 
-                totalRecords: {
-                  $sum: 1,
-                },
+          {
+            $limit: limit,
+          },
+        ],
 
-                totalDebit: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $lt: ["$netAmount", 0],
-                      },
-                      {
-                        $abs: "$netAmount",
-                      },
-                      0,
-                    ],
-                  },
-                },
+        totals: [
+          {
+            $group: {
+              _id: null,
 
-                totalCredit: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $gt: ["$netAmount", 0],
-                      },
-                      "$netAmount",
-                      0,
-                    ],
-                  },
-                },
+              totalRecords: {
+                $sum: 1,
+              },
 
-                netAmount: {
-                  $sum: "$netAmount",
+              totalDebit: {
+                $sum: {
+                  $cond: [
+                    {
+                      $lt: [
+                        "$netAmount",
+                        0,
+                      ],
+                    },
+
+                    {
+                      $abs:
+                        "$netAmount",
+                    },
+
+                    0,
+                  ],
                 },
               },
+
+              totalCredit: {
+                $sum: {
+                  $cond: [
+                    {
+                      $gt: [
+                        "$netAmount",
+                        0,
+                      ],
+                    },
+
+                    "$netAmount",
+
+                    0,
+                  ],
+                },
+              },
+
+              netAmount: {
+                $sum:
+                  "$netAmount",
+              },
             },
-          ],
-        },
-      }
-    );
-
-    const result = await Expense.aggregate(pipeline);
-
-    const rows = result[0]?.data || [];
-
-    const totals = result[0]?.totals[0] || {
-      totalRecords: 0,
-      totalDebit: 0,
-      totalCredit: 0,
-      netAmount: 0,
-    };
-
-    // =====================================================
-    // Format Rows
-    // =====================================================
-
-    const formattedRows = rows.map((row, index) => {
-      const amount = Number(row.netAmount || 0);
-
-      return {
-        sno: skip + index + 1,
-
-        type: row.type,
-
-        referenceNo: row.referenceNo || "-",
-
-        date: row.date,
-
-        party: row.party || "-",
-
-        debit:
-          amount < 0
-            ? Math.abs(amount)
-            : 0,
-
-        credit:
-          amount > 0
-            ? amount
-            : 0,
-
-        netAmount: amount,
-      };
+          },
+        ],
+      },
     });
 
-    // =====================================================
-    // Response
-    // =====================================================
+    const result =
+      await Expense.aggregate(
+        pipeline
+      );
+
+    const rows =
+      result[0]?.data || [];
+
+    const totals =
+      result[0]?.totals?.[0] || {
+        totalRecords: 0,
+        totalDebit: 0,
+        totalCredit: 0,
+        netAmount: 0,
+      };
+
+    const formattedRows =
+      rows.map((row, index) => {
+        const amount =
+          Number(
+            row.netAmount || 0
+          );
+
+        return {
+          sno:
+            skip + index + 1,
+
+          type:
+            row.type,
+
+          referenceNo:
+            row.referenceNo || "-",
+
+          date:
+            row.date,
+
+          party:
+            row.party || "-",
+
+          debit:
+            amount < 0
+              ? Math.abs(amount)
+              : 0,
+
+          credit:
+            amount > 0
+              ? amount
+              : 0,
+
+          netAmount:
+            amount,
+        };
+      });
 
     res.json({
       success: true,
@@ -1299,19 +1227,28 @@ exports.getSalesSummary = async (req, res) => {
 
       limit,
 
-      totalPages: Math.ceil(
-        totals.totalRecords / limit
-      ),
+      totalPages:
+        Math.ceil(
+          totals.totalRecords /
+            limit
+        ),
 
-      totalRecords: totals.totalRecords,
+      totalRecords:
+        totals.totalRecords,
 
       summary: {
-        totalDebit: totals.totalDebit,
-        totalCredit: totals.totalCredit,
-        netAmount: totals.netAmount,
+        totalDebit:
+          totals.totalDebit,
+
+        totalCredit:
+          totals.totalCredit,
+
+        netAmount:
+          totals.netAmount,
       },
 
-      rows: formattedRows,
+      rows:
+        formattedRows,
     });
   } catch (err) {
     console.error(err);
@@ -1323,1463 +1260,738 @@ exports.getSalesSummary = async (req, res) => {
     });
   }
 };
-// ============================================================================
-// 6. GET /api/reports/top-products
-// Professional Top Selling Products Report
-// ============================================================================
 
-exports.getTopSellingProducts = async (req, res) => {
-  try {
-    const { fromDate, toDate } = resolveDateRange(req);
+// ============================================================
+// 6. TOP SELLING PRODUCTS
+// ============================================================
 
-    const limit = Number(req.query.limit) || 10;
+exports.getTopSellingProducts =
+  async (req, res) => {
+    try {
+      const {
+        fromDate,
+        toDate,
+      } = resolveDateRange(req);
 
-    const products = await GarmentInvoice.aggregate([
-      {
-        $match: {
-          createdAt: {
-            $gte: fromDate,
-            $lte: toDate,
-          },
-        },
-      },
+      const limit =
+        Number(req.query.limit) || 10;
 
-      {
-        $unwind: "$items",
-      },
-
-      {
-        $group: {
-          _id: "$items.product",
-
-          productName: {
-            $first: "$items.productName",
-          },
-
-          skuCode: {
-            $first: "$items.skuCode",
-          },
-
-          barcode: {
-            $first: "$items.barcode",
-          },
-
-          quantitySold: {
-            $sum: "$items.quantity",
-          },
-
-          totalSales: {
-            $sum: "$items.totalAmount",
-          },
-
-          invoiceCount: {
-            $sum: 1,
-          },
-
-          gstCollected: {
-            $sum: "$items.gstAmount",
-          },
-
-          averageSellingPrice: {
-            $avg: "$items.price",
-          },
-        },
-      },
-
-      {
-        $sort: {
-          totalSales: -1,
-        },
-      },
-
-      {
-        $limit: limit,
-      },
-
-      {
-        $lookup: {
-          from: "garmentproducts",
-          localField: "_id",
-          foreignField: "_id",
-          as: "product",
-        },
-      },
-
-      {
-        $project: {
-          _id: 0,
-
-          productId: "$_id",
-
-          productName: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.productName",
-                  0,
-                ],
-              },
-              "$productName",
-            ],
-          },
-
-          skuCode: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.skuCode",
-                  0,
-                ],
-              },
-              "$skuCode",
-            ],
-          },
-
-          barcode: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.barcode",
-                  0,
-                ],
-              },
-              "$barcode",
-            ],
-          },
-
-          quantitySold: 1,
-
-          totalSales: 1,
-
-          invoiceCount: 1,
-
-          gstCollected: 1,
-
-          averageSellingPrice: {
-            $round: [
-              "$averageSellingPrice",
-              2,
-            ],
-          },
-
-          currentStock: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.stockQty",
-                  0,
-                ],
-              },
-              0,
-            ],
-          },
-
-          reorderLevel: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.reorderLevel",
-                  0,
-                ],
-              },
-              0,
-            ],
-          },
-
-          category: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.category",
-                  0,
-                ],
-              },
-              "-",
-            ],
-          },
-
-          brand: {
-            $ifNull: [
-              {
-                $arrayElemAt: [
-                  "$product.brand",
-                  0,
-                ],
-              },
-              "-",
-            ],
-          },
-        },
-      },
-    ]);
-
-    // ==========================================================
-    // Overall Summary
-    // ==========================================================
-
-    const totalSales = products.reduce(
-      (sum, item) => sum + item.totalSales,
-      0
-    );
-
-    const totalQuantitySold = products.reduce(
-      (sum, item) => sum + item.quantitySold,
-      0
-    );
-
-    const totalGSTCollected = products.reduce(
-      (sum, item) => sum + item.gstCollected,
-      0
-    );
-
-    // ==========================================================
-    // Add Sales Contribution %
-    // ==========================================================
-
-    const finalProducts = products.map((item, index) => ({
-      rank: index + 1,
-
-      ...item,
-
-      salesContribution:
-        totalSales === 0
-          ? 0
-          : Number(
-              (
-                (item.totalSales / totalSales) *
-                100
-              ).toFixed(2)
-            ),
-
-      stockStatus:
-        item.currentStock <= item.reorderLevel
-          ? "Low Stock"
-          : "Available",
-    }));
-
-    res.json({
-      success: true,
-
-      reportRange: {
-        from: fromDate,
-        to: toDate,
-      },
-
-      summary: {
-        totalProducts: finalProducts.length,
-        totalQuantitySold,
-        totalSales,
-        totalGSTCollected,
-      },
-
-      products: finalProducts,
-    });
-  } catch (err) {
-    console.error(err);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to load top selling products",
-      error: err.message,
-    });
-  }
-};
-exports.exportReport = async (req, res) => {
-  try {
-    const { fromDate, toDate } = resolveDateRange(req);
-
-    // ============================================
-    // Get Ledger
-    // ============================================
-
-    const pipeline = buildLedgerPipeline(fromDate, toDate);
-
-    const rows = await Expense.aggregate(pipeline);
-
-    // ============================================
-    // Summary Calculation
-    // ============================================
-
-    let totalSales = 0;
-    let totalPurchases = 0;
-    let totalExpenses = 0;
-    let totalPayments = 0;
-
-    rows.forEach((row) => {
-      const amount = Number(row.netAmount || 0);
-
-      switch (row.type) {
-        case "Sale":
-          totalSales += amount;
-          break;
-
-        case "Purchase":
-          totalPurchases += Math.abs(amount);
-          break;
-
-        case "Expense":
-          totalExpenses += Math.abs(amount);
-          break;
-
-        case "Payment":
-          totalPayments += amount;
-          break;
-      }
-    });
-
-    const netProfit =
-      totalSales -
-      totalPurchases -
-      totalExpenses;
-
-    // ============================================
-    // Workbook
-    // ============================================
-
-    const workbook = new ExcelJS.Workbook();
-
-    workbook.creator = "Garment Billing Software";
-    workbook.company = "Garment Billing Software";
-    workbook.created = new Date();
-
-    const sheet = workbook.addWorksheet(
-      "Sales Report",
-      {
-        views: [
+      const products =
+        await GarmentInvoice.aggregate([
           {
-            state: "frozen",
-            ySplit: 14,
+            $match: {
+              createdAt: {
+                $gte: fromDate,
+                $lte: toDate,
+              },
+            },
           },
-        ],
-      }
-    );
 
-   // ============================================================
-// Company Header
-// ============================================================
+          {
+            $unwind: "$items",
+          },
 
-sheet.mergeCells("A1:G1");
-sheet.getCell("A1").value = "GARMENT BILLING SOFTWARE";
-sheet.getCell("A1").font = {
-  size: 20,
-  bold: true,
-  color: { argb: "FFFFFFFF" },
-};
+          {
+            $group: {
+              _id:
+                "$items.product",
 
-sheet.getCell("A1").alignment = {
-  horizontal: "center",
-  vertical: "middle",
-};
+              productName: {
+                $first:
+                  "$items.productName",
+              },
 
-sheet.getCell("A1").fill = {
-  type: "pattern",
-  pattern: "solid",
-  fgColor: {
-    argb: "1F4E78",
-  },
-};
+              skuCode: {
+                $first:
+                  "$items.skuCode",
+              },
 
-sheet.mergeCells("A2:G2");
-sheet.getCell("A2").value = "Sales & Financial Report";
+              barcode: {
+                $first:
+                  "$items.barcode",
+              },
 
-sheet.getCell("A2").font = {
-  size: 14,
-  bold: true,
-};
+              quantitySold: {
+                $sum:
+                  "$items.quantity",
+              },
 
-sheet.getCell("A2").alignment = {
-  horizontal: "center",
-};
+              totalSales: {
+                $sum:
+                  "$items.totalAmount",
+              },
 
-// ============================================================
-// Report Information
-// ============================================================
+              invoiceCount: {
+                $sum: 1,
+              },
 
-sheet.getCell("A4").value = "Report From";
-sheet.getCell("B4").value = formatDate(fromDate);
+              gstCollected: {
+                $sum:
+                  "$items.gstAmount",
+              },
 
-sheet.getCell("D4").value = "To";
-sheet.getCell("E4").value = formatDate(toDate);
+              averageSellingPrice: {
+                $avg:
+                  "$items.price",
+              },
+            },
+          },
 
-sheet.getCell("A5").value = "Generated On";
-sheet.getCell("B5").value = formatDate(new Date());
+          {
+            $sort: {
+              totalSales: -1,
+            },
+          },
 
-["A4", "A5", "D4"].forEach((cell) => {
-  sheet.getCell(cell).font = {
-    bold: true,
-  };
-});
+          {
+            $limit: limit,
+          },
 
-// ============================================================
-// Summary Section
-// ============================================================
+          {
+            $lookup: {
+              from:
+                "garmentproducts",
 
-sheet.mergeCells("A7:G7");
+              localField: "_id",
 
-sheet.getCell("A7").value = "SUMMARY";
+              foreignField: "_id",
 
-sheet.getCell("A7").font = {
-  bold: true,
-  color: {
-    argb: "FFFFFFFF",
-  },
-};
+              as: "product",
+            },
+          },
 
-sheet.getCell("A7").alignment = {
-  horizontal: "center",
-};
+          {
+            $project: {
+              _id: 0,
 
-sheet.getCell("A7").fill = {
-  type: "pattern",
-  pattern: "solid",
-  fgColor: {
-    argb: "2F75B5",
-  },
-};
+              productId: "$_id",
 
-sheet.getCell("A8").value = "Total Sales";
-sheet.getCell("B8").value = totalSales;
+              productName: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.productName",
+                      0,
+                    ],
+                  },
+                  "$productName",
+                ],
+              },
 
-sheet.getCell("A9").value = "Total Purchases";
-sheet.getCell("B9").value = totalPurchases;
+              skuCode: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.skuCode",
+                      0,
+                    ],
+                  },
+                  "$skuCode",
+                ],
+              },
 
-sheet.getCell("A10").value = "Total Expenses";
-sheet.getCell("B10").value = totalExpenses;
+              barcode: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.barcode",
+                      0,
+                    ],
+                  },
+                  "$barcode",
+                ],
+              },
 
-sheet.getCell("A11").value = "Total Payments";
-sheet.getCell("B11").value = totalPayments;
+              quantitySold: 1,
 
-sheet.getCell("A12").value = "Net Profit";
-sheet.getCell("B12").value = netProfit;
+              totalSales: 1,
 
-// Currency Format
+              invoiceCount: 1,
 
-for (let i = 8; i <= 12; i++) {
+              gstCollected: 1,
 
-  sheet.getCell(`A${i}`).font = {
-    bold: true,
-  };
+              averageSellingPrice: {
+                $round: [
+                  {
+                    $ifNull: [
+                      "$averageSellingPrice",
+                      0,
+                    ],
+                  },
+                  2,
+                ],
+              },
 
-  sheet.getCell(`B${i}`).numFmt = '#,##0.00';
+              currentStock: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.stockQty",
+                      0,
+                    ],
+                  },
+                  0,
+                ],
+              },
 
-}
+              reorderLevel: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.reorderLevel",
+                      0,
+                    ],
+                  },
+                  0,
+                ],
+              },
 
-// ============================================================
-// Ledger Header
-// ============================================================
+              category: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.category",
+                      0,
+                    ],
+                  },
+                  "-",
+                ],
+              },
 
-const headerRow = 14;
+              brand: {
+                $ifNull: [
+                  {
+                    $arrayElemAt: [
+                      "$product.brand",
+                      0,
+                    ],
+                  },
+                  "-",
+                ],
+              },
+            },
+          },
+        ]);
 
-sheet.getRow(headerRow).values = [
-  "Type",
-  "Reference No",
-  "Date",
-  "Party",
-  "Debit",
-  "Credit",
-  "Net Amount",
-];
+      const totalSales =
+        products.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.totalSales || 0
+            ),
+          0
+        );
 
-sheet.getRow(headerRow).font = {
-  bold: true,
-  color: {
-    argb: "FFFFFFFF",
-  },
-};
+      const totalQuantitySold =
+        products.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.quantitySold || 0
+            ),
+          0
+        );
 
-sheet.getRow(headerRow).alignment = {
-  horizontal: "center",
-};
+      const totalGSTCollected =
+        products.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.gstCollected || 0
+            ),
+          0
+        );
 
-sheet.getRow(headerRow).fill = {
-  type: "pattern",
-  pattern: "solid",
-  fgColor: {
-    argb: "4472C4",
-  },
-};
-// ============================================================
-// Ledger Rows
-// ============================================================
+      const finalProducts =
+        products.map(
+          (item, index) => ({
+            rank: index + 1,
 
-let rowIndex = 15;
+            ...item,
 
-let totalDebit = 0;
-let totalCredit = 0;
+            salesContribution:
+              totalSales === 0
+                ? 0
+                : Number(
+                    (
+                      (item.totalSales /
+                        totalSales) *
+                      100
+                    ).toFixed(2)
+                  ),
 
-rows.forEach((row) => {
+            stockStatus:
+              item.currentStock <=
+              item.reorderLevel
+                ? "Low Stock"
+                : "Available",
+          })
+        );
 
-  const amount = Number(row.netAmount || 0);
+      res.json({
+        success: true,
 
-  let debit = 0;
-  let credit = 0;
+        reportRange: {
+          from: fromDate,
+          to: toDate,
+        },
 
-  if (row.type === "Purchase" || row.type === "Expense") {
-    debit = Math.abs(amount);
-    totalDebit += debit;
-  }
+        summary: {
+          totalProducts:
+            finalProducts.length,
 
-  if (row.type === "Sale" || row.type === "Payment") {
-    credit = Math.abs(amount);
-    totalCredit += credit;
-  }
+          totalQuantitySold,
 
-  sheet.addRow([
-    row.type,
-    row.referenceNo || "",
-    formatDate(row.date),
-    row.party || "-",
-    debit,
-    credit,
-    amount,
-  ]);
+          totalSales,
 
-  const excelRow = sheet.getRow(rowIndex);
+          totalGSTCollected,
+        },
 
-  // Number Formatting
-  excelRow.getCell(5).numFmt = '#,##0.00';
-  excelRow.getCell(6).numFmt = '#,##0.00';
-  excelRow.getCell(7).numFmt = '#,##0.00';
+        products:
+          finalProducts,
+      });
+    } catch (err) {
+      console.error(err);
 
-  // Alignment
-  excelRow.alignment = {
-    vertical: "middle",
-    horizontal: "center",
-  };
-
-  // Borders
-  excelRow.eachCell((cell) => {
-    cell.border = {
-      top: {
-        style: "thin",
-      },
-      left: {
-        style: "thin",
-      },
-      bottom: {
-        style: "thin",
-      },
-      right: {
-        style: "thin",
-      },
-    };
-  });
-
-  // Alternate Row Color
-  if (rowIndex % 2 === 0) {
-    excelRow.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: {
-        argb: "F8F9FA",
-      },
-    };
-  }
-
-  // Sale Row (Green)
-  if (row.type === "Sale") {
-    excelRow.getCell(1).font = {
-      color: {
-        argb: "008000",
-      },
-      bold: true,
-    };
-  }
-
-  // Purchase Row (Red)
-  if (row.type === "Purchase") {
-    excelRow.getCell(1).font = {
-      color: {
-        argb: "C00000",
-      },
-      bold: true,
-    };
-  }
-
-  // Expense Row (Orange)
-  if (row.type === "Expense") {
-    excelRow.getCell(1).font = {
-      color: {
-        argb: "E46C0A",
-      },
-      bold: true,
-    };
-  }
-
-  // Payment Row (Blue)
-  if (row.type === "Payment") {
-    excelRow.getCell(1).font = {
-      color: {
-        argb: "1F4E78",
-      },
-      bold: true,
-    };
-  }
-
-  rowIndex++;
-});
-
-// ============================================================
-// Grand Total Row
-// ============================================================
-
-const totalRow = sheet.addRow([
-  "",
-  "",
-  "",
-  "GRAND TOTAL",
-  totalDebit,
-  totalCredit,
-  netProfit,
-]);
-
-totalRow.font = {
-  bold: true,
-  color: {
-    argb: "FFFFFFFF",
-  },
-};
-
-totalRow.alignment = {
-  horizontal: "center",
-};
-
-totalRow.fill = {
-  type: "pattern",
-  pattern: "solid",
-  fgColor: {
-    argb: "1F4E78",
-  },
-};
-
-totalRow.eachCell((cell) => {
-
-  cell.border = {
-    top: {
-      style: "medium",
-    },
-    left: {
-      style: "thin",
-    },
-    bottom: {
-      style: "medium",
-    },
-    right: {
-      style: "thin",
-    },
+      res.status(500).json({
+        success: false,
+        message:
+          "Failed to load top selling products",
+        error: err.message,
+      });
+    }
   };
 
-});
-
-totalRow.getCell(5).numFmt = '#,##0.00';
-totalRow.getCell(6).numFmt = '#,##0.00';
-totalRow.getCell(7).numFmt = '#,##0.00';
-
 // ============================================================
-// Auto Column Width
+// 7. EXPORT PDF REPORT
 // ============================================================
 
-sheet.columns = [
-  {
-    header: "Type",
-    key: "type",
-    width: 18,
-  },
-  {
-    header: "Reference",
-    key: "reference",
-    width: 20,
-  },
-  {
-    header: "Date",
-    key: "date",
-    width: 18,
-  },
-  {
-    header: "Party",
-    key: "party",
-    width: 35,
-  },
-  {
-    header: "Debit",
-    key: "debit",
-    width: 18,
-  },
-  {
-    header: "Credit",
-    key: "credit",
-    width: 18,
-  },
-  {
-    header: "Net Amount",
-    key: "net",
-    width: 20,
-  },
-];
+exports.exportPDFReport =
+  async (req, res) => {
+    try {
+      // ======================================================
+      // DATE RANGE
+      // ======================================================
 
-// ============================================================
-// Page Setup
-// ============================================================
+      const {
+        fromDate,
+        toDate,
+      } = resolveDateRange(req);
 
-sheet.pageSetup = {
-  paperSize: 9,
-  orientation: "landscape",
-  fitToPage: true,
-  fitToWidth: 1,
-};
+      console.log(
+        "===================================="
+      );
 
-// ============================================================
-// Footer
-// ============================================================
+      console.log(
+        "PDF REPORT REQUEST"
+      );
 
-sheet.footerFooter = "&CGenerated by Garment Billing Software";
+      console.log(
+        "Query:",
+        req.query
+      );
 
-// ============================================================
-// Download Excel
-// ============================================================
+      console.log(
+        "From:",
+        fromDate.toISOString()
+      );
 
-const fileName = `Sales_Report_${Date.now()}.xlsx`;
+      console.log(
+        "To:",
+        toDate.toISOString()
+      );
 
-res.setHeader(
-  "Content-Type",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-);
+      // ======================================================
+      // GET LEDGER DATA
+      // ======================================================
 
-res.setHeader(
-  "Content-Disposition",
-  `attachment; filename=${fileName}`
-);
+      const pipeline =
+        buildLedgerPipeline(
+          fromDate,
+          toDate
+        );
 
-await workbook.xlsx.write(res);
+      const rows =
+        await Expense.aggregate(
+          pipeline
+        );
 
-// ============================================================
-// Auto Filter
-// ============================================================
+      console.log(
+        "Ledger rows:",
+        rows.length
+      );
 
-sheet.autoFilter = {
-  from: "A14",
-  to: "G14",
-};
+      // ======================================================
+      // SUMMARY
+      // ======================================================
 
+      let totalSales = 0;
+      let totalPurchases = 0;
+      let totalExpenses = 0;
+      let totalPayments = 0;
 
+      rows.forEach((row) => {
+        const amount =
+          Number(
+            row.netAmount || 0
+          );
 
-// ============================================================
-// Freeze Pane
-// ============================================================
+        switch (row.type) {
+          case "Sale":
+            totalSales +=
+              Math.abs(amount);
+            break;
 
-sheet.views = [
-  {
-    state: "frozen",
-    ySplit: 14,
-    activeCell: "A15",
-  },
-];
+          case "Purchase":
+            totalPurchases +=
+              Math.abs(amount);
+            break;
 
+          case "Expense":
+            totalExpenses +=
+              Math.abs(amount);
+            break;
 
+          case "Payment":
+            totalPayments +=
+              Math.abs(amount);
+            break;
 
-// ============================================================
-// Header Footer
-// ============================================================
+          default:
+            break;
+        }
+      });
 
-sheet.headerFooter = {
+      const netProfit =
+        totalSales -
+        totalPurchases -
+        totalExpenses;
 
-  oddHeader:
-    "&C&\"Arial,Bold\"GARMENT BILLING SOFTWARE",
+      // ======================================================
+      // PDF DOCUMENT
+      // ======================================================
 
-  oddFooter:
-    "&LGenerated On: &D &RPage &P of &N",
+      const doc =
+        new PDFDocument({
+          size: "A4",
+          layout: "landscape",
 
-};
+          margins: {
+            top: 40,
+            bottom: 45,
+            left: 30,
+            right: 30,
+          },
 
+          bufferPages: true,
+        });
 
+      const fileName =
+        `Sales_Report_${Date.now()}.pdf`;
 
-// ============================================================
-// Workbook Properties
-// ============================================================
+      res.setHeader(
+        "Content-Type",
+        "application/pdf"
+      );
 
-workbook.properties = {
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileName}"`
+      );
 
-  title: "Sales & Financial Report",
+      doc.pipe(res);
 
-  subject: "Garment Billing Sales Report",
+      // ======================================================
+      // PAGE DIMENSIONS
+      // ======================================================
 
-  keywords:
-    "Sales, Purchase, Expense, Payment",
+      const pageWidth =
+        doc.page.width;
 
-};
+      const pageHeight =
+        doc.page.height;
 
+      const left = 30;
 
+      const right = 30;
 
+      const contentWidth =
+        pageWidth -
+        left -
+        right;
 
+      // ======================================================
+      // COMPANY HEADER
+      // ======================================================
 
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(22)
+        .text(
+          "GARMENT BILLING SOFTWARE",
+          {
+            align: "center",
+            width: contentWidth,
+          }
+        );
 
-res.end();
+      doc.moveDown(0.2);
 
+      doc
+        .font("Helvetica")
+        .fontSize(14)
+        .text(
+          "Sales & Financial Report",
+          {
+            align: "center",
+            width: contentWidth,
+          }
+        );
 
+      doc.moveDown(0.8);
 
-  } catch(error) {
+      // ======================================================
+      // REPORT INFO
+      // ======================================================
 
+      const infoY = doc.y;
 
-    console.error(
-      "Export Report Error:",
-      error
-    );
+      doc
+        .font("Helvetica")
+        .fontSize(9);
 
+      doc.text(
+        `Report From : ${formatDate(
+          fromDate
+        )}`,
+        left,
+        infoY,
+        {
+          width: 240,
+          align: "left",
+        }
+      );
 
-    res.status(500).json({
+      doc.text(
+        `Report To : ${formatDate(
+          toDate
+        )}`,
+        left + 270,
+        infoY,
+        {
+          width: 200,
+          align: "left",
+        }
+      );
 
-      success:false,
+      doc.text(
+        `Generated On : ${formatDate(
+          new Date()
+        )}`,
+        left + 520,
+        infoY,
+        {
+          width: 230,
+          align: "left",
+        }
+      );
 
-      message:
-      "Failed to generate Excel report",
+      doc.y = infoY + 25;
 
-      error:error.message
+      // ======================================================
+      // LINE
+      // ======================================================
 
-    });
-
-
-  }
-
-};
-
-
-
-
-
-// ============================================================
-// Date Range Helper
-// ============================================================
-
-
-function resolveDateRange(req){
-
-
-  const fromDate =
-    req.query.fromDate
-    ? new Date(req.query.fromDate)
-    : new Date(
-        new Date().setDate(
-          new Date().getDate()-30
+      doc
+        .moveTo(
+          left,
+          doc.y
         )
-      );
+        .lineTo(
+          pageWidth - right,
+          doc.y
+        )
+        .stroke();
 
+      doc.moveDown(0.8);
 
+      // ======================================================
+      // SUMMARY
+      // ======================================================
 
-  const toDate =
-    req.query.toDate
-    ? new Date(req.query.toDate)
-    : new Date();
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(13)
+        .text("SUMMARY");
 
+      doc.moveDown(0.4);
 
-
-  return {
-
-    fromDate,
-
-    toDate
-
-  };
-
-
-}
-
-
-
-
-
-
-// ============================================================
-// Date Format Helper
-// ============================================================
-
-
-function formatDate(date){
-
-
-  if(!date)
-    return "-";
-
-
-
-  const d = new Date(date);
-
-
-
-  return (
-
-    String(d.getDate()).padStart(2,"0")
-    +
-    "-"
-    +
-    String(d.getMonth()+1).padStart(2,"0")
-    +
-    "-"
-    +
-    d.getFullYear()
-
-  );
-
-
-}
-// ============================================================================
-// 8. GET /api/reports/manager-dashboard
-// Professional Manager Dashboard
-// ============================================================================
-
-exports.getManagerDashboard = async (req, res) => {
-  try {
-
-    // ============================================================
-    // Today Date Range
-    // ============================================================
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    // ============================================================
-    // Dashboard Counts
-    // ============================================================
-
-    const [
-      todayInvoices,
-      todayCustomers,
-      lowStockProducts,
-      pendingInvoices,
-      recentSales,
-      paymentSummary,
-      topProducts,
-    ] = await Promise.all([
-
-      // Today's invoices
-
-      GarmentInvoice.find({
-        invoiceDate: {
-          $gte: todayStart,
-          $lte: todayEnd,
-        },
-      }).populate("customer", "customerName"),
-
-      // Today's new customers
-
-      GarmentCustomer.countDocuments({
-        createdAt: {
-          $gte: todayStart,
-          $lte: todayEnd,
-        },
-      }),
-
-      // Low Stock
-
-      GarmentProduct.countDocuments({
-        $expr: {
-          $lte: [
-            "$stockQty",
-            "$reorderLevel",
-          ],
-        },
-      }),
-
-      // Pending Payments
-
-      GarmentInvoice.countDocuments({
-        paymentStatus: {
-          $in: [
-            "pending",
-            "partial",
-          ],
-        },
-      }),
-
-      // Recent Sales
-
-      GarmentInvoice.find()
-        .sort({
-          invoiceDate: -1,
-        })
-        .limit(10)
-        .populate(
-          "customer",
-          "customerName"
-        ),
-
-      // Payment Summary
-
-      GarmentInvoice.aggregate([
-
-        {
-          $group: {
-            _id: "$paymentMethod",
-            totalAmount: {
-              $sum: "$grandTotal",
-            },
-            totalInvoices: {
-              $sum: 1,
-            },
-          },
-        },
-
-        {
-          $sort: {
-            totalAmount: -1,
-          },
-        },
-
-      ]),
-
-      // Top Products Today
-
-      GarmentInvoice.aggregate([
-
-        {
-          $match: {
-            invoiceDate: {
-              $gte: todayStart,
-              $lte: todayEnd,
-            },
-          },
-        },
-
-        {
-          $unwind: "$items",
-        },
-
-        {
-          $group: {
-
-            _id: "$items.product",
-
-            productName: {
-              $first: "$items.productName",
-            },
-
-            quantity: {
-              $sum: "$items.quantity",
-            },
-
-            sales: {
-              $sum: "$items.totalAmount",
-            },
-
-          },
-        },
-
-        {
-          $sort: {
-            sales: -1,
-          },
-        },
-
-        {
-          $limit: 5,
-        },
-
-      ]),
-
-    ]);
-
-    // ============================================================
-    // Today's Summary
-    // ============================================================
-
-    const todayRevenue = todayInvoices.reduce(
-      (sum, invoice) => sum + Number(invoice.grandTotal || 0),
-      0
-    );
-
-    const totalPaid = todayInvoices.reduce(
-      (sum, invoice) => sum + Number(invoice.paidAmount || 0),
-      0
-    );
-
-    const totalDue = todayInvoices.reduce(
-      (sum, invoice) => sum + Number(invoice.dueAmount || 0),
-      0
-    );
-
-    // ============================================================
-    // Sales Status
-    // ============================================================
-
-    const statusSummary = {
-      paid: 0,
-      partial: 0,
-      pending: 0,
-    };
-
-    todayInvoices.forEach((invoice) => {
-
-      if (
-        statusSummary[invoice.paymentStatus] !== undefined
-      ) {
-        statusSummary[invoice.paymentStatus]++;
-      }
-
-    });
-
-    // ============================================================
-    // Recent Sales
-    // ============================================================
-
-    const sales = recentSales.map((invoice) => ({
-
-      invoiceNo: invoice.invoiceNo,
-
-      customer:
-        invoice.customer?.customerName ||
-        "Walk-in Customer",
-
-      invoiceDate: invoice.invoiceDate,
-
-      totalItems: invoice.items.length,
-
-      quantity: invoice.items.reduce(
-        (sum, item) => sum + item.quantity,
-        0
-      ),
-
-      amount: invoice.grandTotal,
-
-      paidAmount: invoice.paidAmount,
-
-      dueAmount: invoice.dueAmount,
-
-      paymentMethod: invoice.paymentMethod,
-
-      paymentStatus: invoice.paymentStatus,
-
-    }));
-
-    // ============================================================
-    // Response
-    // ============================================================
-
-    res.json({
-
-      success: true,
-
-      dashboard: {
-
-        todaySales: todayRevenue,
-
-        todayOrders: todayInvoices.length,
-
-        todayCustomers,
-
-        lowStockProducts,
-
-        pendingInvoices,
-
-        totalPaid,
-
-        totalDue,
-
-      },
-
-      paymentSummary,
-
-      salesStatus: statusSummary,
-
-      topProducts,
-
-      recentSales: sales,
-
-    });
-
-  } catch (err) {
-
-    console.error(err);
-
-    res.status(500).json({
-
-      success: false,
-
-      message: "Failed to load manager dashboard",
-
-      error: err.message,
-
-    });
-
-  }
-};
-// ============================================================================
-// GET /api/reports/export-pdf
-// Professional Sales & Financial PDF Report
-// ============================================================================
-
-exports.exportPDFReport = async (req, res) => {
-  try {
-    const { fromDate, toDate } = resolveDateRange(req);
-
-    // ============================================================
-    // Get Ledger Data
-    // ============================================================
-
-    const pipeline = buildLedgerPipeline(
-      fromDate,
-      toDate
-    );
-
-    const rows = await Expense.aggregate(pipeline);
-
-    // ============================================================
-    // Summary Calculation
-    // ============================================================
-
-    let totalSales = 0;
-    let totalPurchases = 0;
-    let totalExpenses = 0;
-    let totalPayments = 0;
-
-    rows.forEach((row) => {
-      const amount = Number(row.netAmount || 0);
-
-      switch (row.type) {
-        case "Sale":
-          totalSales += amount;
-          break;
-
-        case "Purchase":
-          totalPurchases += Math.abs(amount);
-          break;
-
-        case "Expense":
-          totalExpenses += Math.abs(amount);
-          break;
-
-        case "Payment":
-          totalPayments += Math.abs(amount);
-          break;
-      }
-    });
-
-    const netProfit =
-      totalSales -
-      totalPurchases -
-      totalExpenses;
-
-    // ============================================================
-    // Create PDF
-    // ============================================================
-
-    const doc = new PDFDocument({
-      size: "A4",
-      layout: "landscape",
-      margins: {
-        top: 40,
-        bottom: 40,
-        left: 30,
-        right: 30,
-      },
-      bufferPages: true,
-    });
-
-    // ============================================================
-    // Response Headers
-    // ============================================================
-
-    const fileName =
-      `Sales_Report_${Date.now()}.pdf`;
-
-    res.setHeader(
-      "Content-Type",
-      "application/pdf"
-    );
-
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${fileName}"`
-    );
-
-    // Pipe PDF directly to browser
-    doc.pipe(res);
-
-    // ============================================================
-    // Company Header
-    // ============================================================
-
-    doc
-      .fontSize(22)
-      .font("Helvetica-Bold")
-      .text(
-        "GARMENT BILLING SOFTWARE",
-        {
-          align: "center",
-        }
-      );
-
-    doc.moveDown(0.3);
-
-    doc
-      .fontSize(15)
-      .font("Helvetica")
-      .text(
-        "Sales & Financial Report",
-        {
-          align: "center",
-        }
-      );
-
-    doc.moveDown(0.8);
-
-    // ============================================================
-    // Report Information
-    // ============================================================
-
-    doc
-      .fontSize(10)
-      .font("Helvetica");
-
-    doc.text(
-      `Report From : ${formatDate(fromDate)}`,
-      40,
-      doc.y
-    );
-
-    doc.text(
-      `Report To   : ${formatDate(toDate)}`,
-      300,
-      doc.y - 12
-    );
-
-    doc.text(
-      `Generated On: ${formatDate(new Date())}`,
-      560,
-      doc.y - 12
-    );
-
-    doc.moveDown(1.2);
-
-    // ============================================================
-    // Horizontal Line
-    // ============================================================
-
-    doc
-      .moveTo(30, doc.y)
-      .lineTo(812, doc.y)
-      .stroke();
-
-    doc.moveDown(1);
-
-    // ============================================================
-    // SUMMARY TITLE
-    // ============================================================
-
-    doc
-      .fontSize(14)
-      .font("Helvetica-Bold")
-      .text("SUMMARY");
-
-    doc.moveDown(0.5);
-
-    // ============================================================
-    // Summary Table
-    // ============================================================
-
-    const summaryTable = {
-      headers: [
+      const summaryHeaders = [
         "Total Sales",
         "Total Purchases",
         "Total Expenses",
         "Total Payments",
         "Net Profit",
-      ],
-
-      rows: [
-        [
-          formatCurrency(totalSales),
-          formatCurrency(totalPurchases),
-          formatCurrency(totalExpenses),
-          formatCurrency(totalPayments),
-          formatCurrency(netProfit),
-        ],
-      ],
-    };
-
-    await doc.table(summaryTable, {
-      width: 750,
-
-      prepareHeader: () => {
-        doc
-          .font("Helvetica-Bold")
-          .fontSize(9);
-      },
-
-      prepareRow: () => {
-        doc
-          .font("Helvetica")
-          .fontSize(9);
-      },
-
-      padding: 6,
-
-      columnSpacing: 5,
-    });
-
-    doc.moveDown(1);
-
-    // ============================================================
-    // LEDGER TITLE
-    // ============================================================
-
-    doc
-      .fontSize(14)
-      .font("Helvetica-Bold")
-      .text("LEDGER");
-
-    doc.moveDown(0.5);
-
-    // ============================================================
-    // Ledger Table Data
-    // ============================================================
-
-    const ledgerRows = rows.map((row) => {
-      const amount =
-        Number(row.netAmount || 0);
-
-      let debit = 0;
-      let credit = 0;
-
-      if (
-        row.type === "Purchase" ||
-        row.type === "Expense"
-      ) {
-        debit = Math.abs(amount);
-      }
-
-      if (
-        row.type === "Sale" ||
-        row.type === "Payment"
-      ) {
-        credit = Math.abs(amount);
-      }
-
-      return [
-        row.type || "-",
-
-        row.referenceNo || "-",
-
-        formatDate(row.date),
-
-        row.party || "-",
-
-        formatCurrency(debit),
-
-        formatCurrency(credit),
-
-        formatCurrency(amount),
       ];
-    });
 
-    // ============================================================
-    // Ledger Table
-    // ============================================================
+      const summaryValues = [
+        formatCurrency(totalSales),
+        formatCurrency(totalPurchases),
+        formatCurrency(totalExpenses),
+        formatCurrency(totalPayments),
+        formatCurrency(netProfit),
+      ];
 
-    await doc.table(
-      {
-        headers: [
+      const summaryWidth =
+        contentWidth / 5;
+
+      const summaryHeaderHeight = 24;
+
+      const summaryValueHeight = 28;
+
+      let x = left;
+
+      // ======================================================
+      // SUMMARY HEADER
+      // ======================================================
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(8);
+
+      const summaryHeaderY =
+        doc.y;
+
+      summaryHeaders.forEach(
+        (header) => {
+          doc
+            .rect(
+              x,
+              summaryHeaderY,
+              summaryWidth,
+              summaryHeaderHeight
+            )
+            .stroke();
+
+          doc.text(
+            header,
+            x + 4,
+            summaryHeaderY + 7,
+            {
+              width:
+                summaryWidth - 8,
+
+              align: "center",
+
+              lineBreak: false,
+            }
+          );
+
+          x += summaryWidth;
+        }
+      );
+
+      // ======================================================
+      // SUMMARY VALUES
+      // ======================================================
+
+      const summaryValueY =
+        summaryHeaderY +
+        summaryHeaderHeight;
+
+      x = left;
+
+      doc
+        .font("Helvetica")
+        .fontSize(8);
+
+      summaryValues.forEach(
+        (value) => {
+          doc
+            .rect(
+              x,
+              summaryValueY,
+              summaryWidth,
+              summaryValueHeight
+            )
+            .stroke();
+
+          doc.text(
+            value,
+            x + 5,
+            summaryValueY + 8,
+            {
+              width:
+                summaryWidth - 10,
+
+              align: "right",
+
+              lineBreak: false,
+            }
+          );
+
+          x += summaryWidth;
+        }
+      );
+
+      doc.y =
+        summaryValueY +
+        summaryValueHeight +
+        25;
+
+      // ======================================================
+      // LEDGER TITLE
+      // ======================================================
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(13)
+        .text("LEDGER");
+
+      doc.moveDown(0.4);
+
+      // ======================================================
+      // LEDGER COLUMN WIDTHS
+      // ======================================================
+      //
+      // Total:
+      //
+      // 75 + 120 + 85 + 220 + 90 + 90 + 102
+      // = 782
+      //
+      // A4 landscape:
+      //
+      // 842 - 30 - 30 = 782
+      //
+      // ======================================================
+
+      const columnWidths = [
+        75,  // Type
+        120, // Reference No
+        85,  // Date
+        220, // Party
+        90,  // Debit
+        90,  // Credit
+        102, // Net Amount
+      ];
+
+      const headerHeight = 25;
+
+      const rowHeight = 22;
+
+      // ======================================================
+      // DRAW LEDGER HEADER
+      // ======================================================
+
+      const drawLedgerHeader = () => {
+        const headerY =
+          doc.y;
+
+        let headerX =
+          left;
+
+        const headers = [
           "Type",
           "Reference No",
           "Date",
@@ -2787,186 +1999,1248 @@ exports.exportPDFReport = async (req, res) => {
           "Debit",
           "Credit",
           "Net Amount",
-        ],
+        ];
 
-        rows: ledgerRows,
-      },
-      {
-        width: 750,
+        doc
+          .font("Helvetica-Bold")
+          .fontSize(7.5);
 
-        padding: 5,
+        headers.forEach(
+          (header, index) => {
+            const width =
+              columnWidths[index];
 
-        columnSpacing: 3,
+            doc
+              .rect(
+                headerX,
+                headerY,
+                width,
+                headerHeight
+              )
+              .stroke();
 
-        prepareHeader: () => {
-          doc
-            .font("Helvetica-Bold")
-            .fontSize(8);
-        },
+            doc.text(
+              header,
+              headerX + 4,
+              headerY + 8,
+              {
+                width:
+                  width - 8,
 
-        prepareRow: (
-          row,
-          indexColumn,
-          indexRow,
-          rectRow,
-          rectCell
-        ) => {
-          doc
-            .font("Helvetica")
-            .fontSize(7.5);
+                align:
+                  index >= 4
+                    ? "right"
+                    : "left",
 
-          // Page break protection
-          if (
-            rectRow &&
-            rectRow.y + rectRow.height >
-              doc.page.height - 50
-          ) {
-            doc.addPage();
+                lineBreak: false,
+              }
+            );
+
+            headerX += width;
           }
-        },
+        );
+
+        doc.y =
+          headerY +
+          headerHeight;
+      };
+
+      // ======================================================
+      // FIRST HEADER
+      // ======================================================
+
+      drawLedgerHeader();
+
+      // ======================================================
+      // NO DATA
+      // ======================================================
+
+      if (
+        !rows ||
+        rows.length === 0
+      ) {
+        doc
+          .font("Helvetica")
+          .fontSize(10)
+          .text(
+            "No records found for the selected date range.",
+            left,
+            doc.y + 10,
+            {
+              width: contentWidth,
+              align: "center",
+            }
+          );
       }
-    );
 
-    // ============================================================
-    // Grand Total
-    // ============================================================
+      // ======================================================
+      // LEDGER TOTALS
+      // ======================================================
 
-    doc.moveDown(1);
+      let totalDebit = 0;
 
-    const totalDebit = rows.reduce(
-      (sum, row) => {
+      let totalCredit = 0;
+
+      // ======================================================
+      // LEDGER ROWS
+      // ======================================================
+
+      for (
+        let i = 0;
+        i < rows.length;
+        i++
+      ) {
+        const row =
+          rows[i];
+
+        const amount =
+          Number(
+            row.netAmount || 0
+          );
+
+        let debit = 0;
+
+        let credit = 0;
+
+        // ----------------------------------------------------
+        // DEBIT
+        // ----------------------------------------------------
+
         if (
           row.type === "Purchase" ||
           row.type === "Expense"
         ) {
-          return (
-            sum +
-            Math.abs(
-              Number(row.netAmount || 0)
-            )
-          );
+          debit =
+            Math.abs(amount);
+
+          totalDebit += debit;
         }
 
-        return sum;
-      },
-      0
-    );
+        // ----------------------------------------------------
+        // CREDIT
+        // ----------------------------------------------------
 
-    const totalCredit = rows.reduce(
-      (sum, row) => {
         if (
           row.type === "Sale" ||
           row.type === "Payment"
         ) {
-          return (
-            sum +
-            Math.abs(
-              Number(row.netAmount || 0)
-            )
-          );
+          credit =
+            Math.abs(amount);
+
+          totalCredit += credit;
         }
 
-        return sum;
-      },
-      0
-    );
+        // ====================================================
+        // PAGE SPACE CHECK
+        // ====================================================
 
-    // ============================================================
-    // Grand Total Table
-    // ============================================================
+        if (
+          doc.y +
+            rowHeight >
+          pageHeight - 55
+        ) {
+          doc.addPage();
 
-    await doc.table(
-      {
-        headers: [
+          doc.y = 40;
+
+          doc
+            .font("Helvetica-Bold")
+            .fontSize(11)
+            .text(
+              "LEDGER - CONTINUED",
+              left,
+              doc.y,
+              {
+                width: contentWidth,
+                align: "left",
+              }
+            );
+
+          doc.moveDown(0.4);
+
+          drawLedgerHeader();
+        }
+
+        // ====================================================
+        // ROW
+        // ====================================================
+
+        const rowY =
+          doc.y;
+
+        let rowX =
+          left;
+
+        const values = [
+          row.type || "-",
+
+          row.referenceNo || "-",
+
+          formatDate(row.date),
+
+          row.party || "-",
+
+          formatCurrency(debit),
+
+          formatCurrency(credit),
+
+          formatCurrency(amount),
+        ];
+
+        doc
+          .font("Helvetica")
+          .fontSize(7);
+
+        values.forEach(
+          (value, index) => {
+            const width =
+              columnWidths[index];
+
+            doc
+              .rect(
+                rowX,
+                rowY,
+                width,
+                rowHeight
+              )
+              .stroke();
+
+            const isNumeric =
+              index >= 4;
+
+            doc.text(
+              String(value),
+              rowX + 4,
+              rowY + 7,
+              {
+                width:
+                  width - 8,
+
+                height:
+                  rowHeight - 6,
+
+                align:
+                  isNumeric
+                    ? "right"
+                    : "left",
+
+                lineBreak: false,
+
+                ellipsis: true,
+              }
+            );
+
+            rowX += width;
+          }
+        );
+
+        doc.y =
+          rowY +
+          rowHeight;
+      }
+
+      // ======================================================
+      // GRAND TOTAL PAGE CHECK
+      // ======================================================
+
+      if (
+        doc.y + 75 >
+        pageHeight - 45
+      ) {
+        doc.addPage();
+
+        doc.y = 40;
+      }
+
+      doc.moveDown(1);
+
+      // ======================================================
+      // GRAND TOTAL TITLE
+      // ======================================================
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(11)
+        .text(
+          "GRAND TOTAL",
+          left,
+          doc.y,
+          {
+            width: contentWidth,
+            align: "left",
+          }
+        );
+
+      doc.moveDown(0.4);
+
+      // ======================================================
+      // GRAND TOTAL WIDTHS
+      // ======================================================
+
+      const grandWidths = [
+        402,
+        120,
+        120,
+        140,
+      ];
+
+      // Total = 782
+
+      const grandHeaders = [
+        "",
+        "Debit",
+        "Credit",
+        "Net Amount",
+      ];
+
+      const grandValues = [
+        "GRAND TOTAL",
+        formatCurrency(totalDebit),
+        formatCurrency(totalCredit),
+        formatCurrency(netProfit),
+      ];
+
+      const grandY =
+        doc.y;
+
+      // ======================================================
+      // GRAND TOTAL HEADER
+      // ======================================================
+
+      let grandX =
+        left;
+
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(8);
+
+      grandHeaders.forEach(
+        (header, index) => {
+          const width =
+            grandWidths[index];
+
+          doc
+            .rect(
+              grandX,
+              grandY,
+              width,
+              25
+            )
+            .stroke();
+
+          doc.text(
+            header,
+            grandX + 5,
+            grandY + 8,
+            {
+              width:
+                width - 10,
+
+              align:
+                index === 0
+                  ? "left"
+                  : "right",
+
+              lineBreak: false,
+            }
+          );
+
+          grandX += width;
+        }
+      );
+
+      // ======================================================
+      // GRAND TOTAL VALUES
+      // ======================================================
+
+      grandX =
+        left;
+
+      grandValues.forEach(
+        (value, index) => {
+          const width =
+            grandWidths[index];
+
+          doc
+            .rect(
+              grandX,
+              grandY + 25,
+              width,
+              25
+            )
+            .stroke();
+
+          doc.text(
+            String(value),
+            grandX + 5,
+            grandY + 33,
+            {
+              width:
+                width - 10,
+
+              align:
+                index === 0
+                  ? "left"
+                  : "right",
+
+              lineBreak: false,
+            }
+          );
+
+          grandX += width;
+        }
+      );
+
+      // ======================================================
+      // PAGE NUMBERS
+      // ======================================================
+
+      const pageRange =
+        doc.bufferedPageRange();
+
+      for (
+        let i =
+          pageRange.start;
+
+        i <
+        pageRange.start +
+          pageRange.count;
+
+        i++
+      ) {
+        doc.switchToPage(i);
+
+        const pageNumber =
+          i -
+          pageRange.start +
+          1;
+
+        doc
+          .font("Helvetica")
+          .fontSize(7)
+          .text(
+            `Generated by Garment Billing Software | Page ${pageNumber} of ${pageRange.count}`,
+            left,
+            pageHeight - 25,
+            {
+              width:
+                contentWidth,
+
+              align: "center",
+
+              lineBreak: false,
+            }
+          );
+      }
+
+      // ======================================================
+      // END PDF
+      // ======================================================
+
+      doc.end();
+    } catch (error) {
+      console.error(
+        "Export PDF Report Error:",
+        error
+      );
+
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+
+          message:
+            "Failed to generate PDF report",
+
+          error:
+            error.message,
+        });
+      }
+    }
+  };
+
+// ============================================================
+// 8. EXPORT EXCEL REPORT
+// ============================================================
+
+exports.exportReport =
+  async (req, res) => {
+    try {
+      const {
+        fromDate,
+        toDate,
+      } = resolveDateRange(req);
+
+      // ======================================================
+      // GET LEDGER DATA
+      // ======================================================
+
+      const pipeline =
+        buildLedgerPipeline(
+          fromDate,
+          toDate
+        );
+
+      const rows =
+        await Expense.aggregate(
+          pipeline
+        );
+
+      // ======================================================
+      // SUMMARY
+      // ======================================================
+
+      let totalSales = 0;
+
+      let totalPurchases = 0;
+
+      let totalExpenses = 0;
+
+      let totalPayments = 0;
+
+      rows.forEach((row) => {
+        const amount =
+          Number(
+            row.netAmount || 0
+          );
+
+        switch (row.type) {
+          case "Sale":
+            totalSales +=
+              Math.abs(amount);
+            break;
+
+          case "Purchase":
+            totalPurchases +=
+              Math.abs(amount);
+            break;
+
+          case "Expense":
+            totalExpenses +=
+              Math.abs(amount);
+            break;
+
+          case "Payment":
+            totalPayments +=
+              Math.abs(amount);
+            break;
+
+          default:
+            break;
+        }
+      });
+
+      const netProfit =
+        totalSales -
+        totalPurchases -
+        totalExpenses;
+
+      // ======================================================
+      // WORKBOOK
+      // ======================================================
+
+      const workbook =
+        new ExcelJS.Workbook();
+
+      workbook.creator =
+        "Garment Billing Software";
+
+      workbook.created =
+        new Date();
+
+      const sheet =
+        workbook.addWorksheet(
+          "Sales Report"
+        );
+
+      // ======================================================
+      // TITLE
+      // ======================================================
+
+      sheet.mergeCells("A1:G1");
+
+      const titleCell =
+        sheet.getCell("A1");
+
+      titleCell.value =
+        "GARMENT BILLING SOFTWARE";
+
+      titleCell.font = {
+        size: 20,
+        bold: true,
+        color: {
+          argb: "FFFFFFFF",
+        },
+      };
+
+      titleCell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+
+      titleCell.fill = {
+        type: "pattern",
+        pattern: "solid",
+
+        fgColor: {
+          argb: "1F4E78",
+        },
+      };
+
+      sheet.getRow(1).height =
+        30;
+
+      // ======================================================
+      // SUBTITLE
+      // ======================================================
+
+      sheet.mergeCells("A2:G2");
+
+      const subtitleCell =
+        sheet.getCell("A2");
+
+      subtitleCell.value =
+        "Sales & Financial Report";
+
+      subtitleCell.font = {
+        size: 14,
+        bold: true,
+      };
+
+      subtitleCell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+
+      sheet.getRow(2).height =
+        24;
+
+      // ======================================================
+      // REPORT INFORMATION
+      // ======================================================
+
+      sheet.getCell("A4").value =
+        "Report From";
+
+      sheet.getCell("B4").value =
+        formatDate(fromDate);
+
+      sheet.getCell("D4").value =
+        "Report To";
+
+      sheet.getCell("E4").value =
+        formatDate(toDate);
+
+      sheet.getCell("A5").value =
+        "Generated On";
+
+      sheet.getCell("B5").value =
+        formatDate(new Date());
+
+      ["A4", "D4", "A5"].forEach(
+        (cell) => {
+          sheet.getCell(
+            cell
+          ).font = {
+            bold: true,
+          };
+        }
+      );
+
+      ["A4", "B4", "D4", "E4", "A5", "B5"].forEach(
+        (cell) => {
+          sheet.getCell(
+            cell
+          ).alignment = {
+            vertical: "middle",
+            horizontal:
+              cell.startsWith("A") ||
+              cell.startsWith("D")
+                ? "left"
+                : "left",
+          };
+        }
+      );
+
+      // ======================================================
+      // SUMMARY
+      // ======================================================
+
+      sheet.mergeCells("A7:G7");
+
+      const summaryTitle =
+        sheet.getCell("A7");
+
+      summaryTitle.value =
+        "SUMMARY";
+
+      summaryTitle.font = {
+        bold: true,
+        color: {
+          argb: "FFFFFFFF",
+        },
+      };
+
+      summaryTitle.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+
+      summaryTitle.fill = {
+        type: "pattern",
+        pattern: "solid",
+
+        fgColor: {
+          argb: "2F75B5",
+        },
+      };
+
+      const summaryData = [
+        [
+          "Total Sales",
+          totalSales,
+        ],
+
+        [
+          "Total Purchases",
+          totalPurchases,
+        ],
+
+        [
+          "Total Expenses",
+          totalExpenses,
+        ],
+
+        [
+          "Total Payments",
+          totalPayments,
+        ],
+
+        [
+          "Net Profit",
+          netProfit,
+        ],
+      ];
+
+      summaryData.forEach(
+        (item, index) => {
+          const rowNumber =
+            8 + index;
+
+          const labelCell =
+            sheet.getCell(
+              `A${rowNumber}`
+            );
+
+          const valueCell =
+            sheet.getCell(
+              `B${rowNumber}`
+            );
+
+          labelCell.value =
+            item[0];
+
+          valueCell.value =
+            item[1];
+
+          labelCell.font = {
+            bold: true,
+          };
+
+          labelCell.alignment = {
+            horizontal: "left",
+            vertical: "middle",
+          };
+
+          valueCell.alignment = {
+            horizontal: "right",
+            vertical: "middle",
+          };
+
+          valueCell.numFmt =
+            "#,##0.00";
+        }
+      );
+
+      // ======================================================
+      // LEDGER HEADER
+      // ======================================================
+
+      const headerRow = 14;
+
+      const ledgerHeader =
+        sheet.getRow(
+          headerRow
+        );
+
+      ledgerHeader.values = [
+        "Type",
+        "Reference No",
+        "Date",
+        "Party",
+        "Debit",
+        "Credit",
+        "Net Amount",
+      ];
+
+      ledgerHeader.font = {
+        bold: true,
+        color: {
+          argb: "FFFFFFFF",
+        },
+      };
+
+      ledgerHeader.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+      };
+
+      ledgerHeader.fill = {
+        type: "pattern",
+        pattern: "solid",
+
+        fgColor: {
+          argb: "4472C4",
+        },
+      };
+
+      ledgerHeader.height =
+        24;
+
+      // ======================================================
+      // LEDGER ROWS
+      // ======================================================
+
+      let totalDebit = 0;
+
+      let totalCredit = 0;
+
+      rows.forEach((row) => {
+        const amount =
+          Number(
+            row.netAmount || 0
+          );
+
+        let debit = 0;
+
+        let credit = 0;
+
+        if (
+          row.type === "Purchase" ||
+          row.type === "Expense"
+        ) {
+          debit =
+            Math.abs(amount);
+
+          totalDebit += debit;
+        }
+
+        if (
+          row.type === "Sale" ||
+          row.type === "Payment"
+        ) {
+          credit =
+            Math.abs(amount);
+
+          totalCredit += credit;
+        }
+
+        const excelRow =
+          sheet.addRow([
+            row.type || "-",
+
+            row.referenceNo || "-",
+
+            formatDate(row.date),
+
+            row.party || "-",
+
+            debit,
+
+            credit,
+
+            amount,
+          ]);
+
+        // ----------------------------------------------------
+        // TEXT ALIGNMENT
+        // ----------------------------------------------------
+
+        excelRow.getCell(1).alignment = {
+          horizontal: "left",
+          vertical: "middle",
+        };
+
+        excelRow.getCell(2).alignment = {
+          horizontal: "left",
+          vertical: "middle",
+        };
+
+        excelRow.getCell(3).alignment = {
+          horizontal: "center",
+          vertical: "middle",
+        };
+
+        excelRow.getCell(4).alignment = {
+          horizontal: "left",
+          vertical: "middle",
+        };
+
+        // ----------------------------------------------------
+        // NUMBER ALIGNMENT
+        // ----------------------------------------------------
+
+        excelRow.getCell(5).alignment = {
+          horizontal: "right",
+          vertical: "middle",
+        };
+
+        excelRow.getCell(6).alignment = {
+          horizontal: "right",
+          vertical: "middle",
+        };
+
+        excelRow.getCell(7).alignment = {
+          horizontal: "right",
+          vertical: "middle",
+        };
+
+        // ----------------------------------------------------
+        // NUMBER FORMAT
+        // ----------------------------------------------------
+
+        excelRow.getCell(5).numFmt =
+          "#,##0.00";
+
+        excelRow.getCell(6).numFmt =
+          "#,##0.00";
+
+        excelRow.getCell(7).numFmt =
+          "#,##0.00";
+
+        // ----------------------------------------------------
+        // BORDERS
+        // ----------------------------------------------------
+
+        excelRow.eachCell(
+          (cell) => {
+            cell.border = {
+              top: {
+                style: "thin",
+              },
+
+              left: {
+                style: "thin",
+              },
+
+              bottom: {
+                style: "thin",
+              },
+
+              right: {
+                style: "thin",
+              },
+            };
+
+            cell.alignment = {
+              ...cell.alignment,
+
+              vertical: "middle",
+            };
+          }
+        );
+
+        excelRow.height =
+          20;
+      });
+
+      // ======================================================
+      // GRAND TOTAL
+      // ======================================================
+
+      const totalRow =
+        sheet.addRow([
           "",
           "",
           "",
           "GRAND TOTAL",
-          "Debit",
-          "Credit",
-          "Net Amount",
-        ],
+          totalDebit,
+          totalCredit,
+          netProfit,
+        ]);
 
-        rows: [
-          [
-            "",
-            "",
-            "",
-            "",
-            formatCurrency(totalDebit),
-            formatCurrency(totalCredit),
-            formatCurrency(netProfit),
-          ],
-        ],
-      },
-      {
-        width: 750,
+      totalRow.font = {
+        bold: true,
 
-        padding: 6,
+        color: {
+          argb: "FFFFFFFF",
+        },
+      };
 
-        prepareHeader: () => {
-          doc
-            .font("Helvetica-Bold")
-            .fontSize(8);
+      totalRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+
+        fgColor: {
+          argb: "1F4E78",
+        },
+      };
+
+      totalRow.alignment = {
+        vertical: "middle",
+      };
+
+      totalRow.getCell(4).alignment = {
+        horizontal: "left",
+        vertical: "middle",
+      };
+
+      totalRow.getCell(5).alignment = {
+        horizontal: "right",
+        vertical: "middle",
+      };
+
+      totalRow.getCell(6).alignment = {
+        horizontal: "right",
+        vertical: "middle",
+      };
+
+      totalRow.getCell(7).alignment = {
+        horizontal: "right",
+        vertical: "middle",
+      };
+
+      totalRow.getCell(5).numFmt =
+        "#,##0.00";
+
+      totalRow.getCell(6).numFmt =
+        "#,##0.00";
+
+      totalRow.getCell(7).numFmt =
+        "#,##0.00";
+
+      totalRow.eachCell(
+        (cell) => {
+          cell.border = {
+            top: {
+              style: "thin",
+            },
+
+            left: {
+              style: "thin",
+            },
+
+            bottom: {
+              style: "thin",
+            },
+
+            right: {
+              style: "thin",
+            },
+          };
+        }
+      );
+
+      // ======================================================
+      // COLUMN WIDTH
+      // ======================================================
+
+      sheet.columns = [
+        {
+          key: "type",
+          width: 18,
         },
 
-        prepareRow: () => {
-          doc
-            .font("Helvetica-Bold")
-            .fontSize(8);
+        {
+          key: "referenceNo",
+          width: 22,
         },
-      }
-    );
 
-    // ============================================================
-    // Footer
-    // ============================================================
+        {
+          key: "date",
+          width: 18,
+        },
 
-    const range =
-      doc.bufferedPageRange();
+        {
+          key: "party",
+          width: 35,
+        },
 
-    for (
-      let i = range.start;
-      i < range.start + range.count;
-      i++
-    ) {
-      doc.switchToPage(i);
+        {
+          key: "debit",
+          width: 18,
+        },
 
-      doc
-        .fontSize(8)
-        .font("Helvetica")
-        .text(
-          `Generated by Garment Billing Software | Page ${i + 1} of ${range.count}`,
-          30,
-          doc.page.height - 25,
-          {
-            align: "center",
-            width: 750,
+        {
+          key: "credit",
+          width: 18,
+        },
+
+        {
+          key: "netAmount",
+          width: 20,
+        },
+      ];
+
+      // ======================================================
+      // ALIGN ALL DATA COLUMNS
+      // ======================================================
+
+      sheet.eachRow(
+        (row, rowNumber) => {
+          if (rowNumber >= 14) {
+            row.getCell(1).alignment = {
+              horizontal: "left",
+              vertical: "middle",
+            };
+
+            row.getCell(2).alignment = {
+              horizontal: "left",
+              vertical: "middle",
+            };
+
+            row.getCell(3).alignment = {
+              horizontal: "center",
+              vertical: "middle",
+            };
+
+            row.getCell(4).alignment = {
+              horizontal: "left",
+              vertical: "middle",
+            };
+
+            row.getCell(5).alignment = {
+              horizontal: "right",
+              vertical: "middle",
+            };
+
+            row.getCell(6).alignment = {
+              horizontal: "right",
+              vertical: "middle",
+            };
+
+            row.getCell(7).alignment = {
+              horizontal: "right",
+              vertical: "middle",
+            };
           }
-        );
+        }
+      );
+
+      // ======================================================
+      // FILTER
+      // ======================================================
+
+      sheet.autoFilter = {
+        from: "A14",
+        to: "G14",
+      };
+
+      // ======================================================
+      // FREEZE
+      // ======================================================
+
+      sheet.views = [
+        {
+          state: "frozen",
+          ySplit: 14,
+          activeCell: "A15",
+        },
+      ];
+
+      // ======================================================
+      // PAGE SETUP
+      // ======================================================
+
+      sheet.pageSetup = {
+        paperSize: 9,
+
+        orientation:
+          "landscape",
+
+        fitToPage: true,
+
+        fitToWidth: 1,
+
+        fitToHeight: 0,
+
+        horizontalDpi: 300,
+
+        verticalDpi: 300,
+
+        margins: {
+          left: 0.25,
+          right: 0.25,
+          top: 0.5,
+          bottom: 0.5,
+          header: 0.2,
+          footer: 0.2,
+        },
+      };
+
+      // ======================================================
+      // PRINT TITLES
+      // ======================================================
+
+      sheet.pageSetup.printTitlesRow =
+        "14:14";
+
+      // ======================================================
+      // HEADER / FOOTER
+      // ======================================================
+
+      sheet.headerFooter = {
+        oddHeader:
+          '&C&"Arial,Bold"GARMENT BILLING SOFTWARE',
+
+        oddFooter:
+          "&LGenerated On: &D &RPage &P of &N",
+      };
+
+      // ======================================================
+      // PRINT AREA
+      // ======================================================
+
+      sheet.printArea =
+        `A1:G${sheet.lastRow.number}`;
+
+      // ======================================================
+      // RESPONSE
+      // ======================================================
+
+      const fileName =
+        `Sales_Report_${Date.now()}.xlsx`;
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileName}"`
+      );
+
+      await workbook.xlsx.write(
+        res
+      );
+
+      res.end();
+    } catch (error) {
+      console.error(
+        "Export Excel Report Error:",
+        error
+      );
+
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+
+          message:
+            "Failed to generate Excel report",
+
+          error:
+            error.message,
+        });
+      }
     }
-
-    // ============================================================
-    // Finish PDF
-    // ============================================================
-
-    doc.end();
-
-  } catch (error) {
-    console.error(
-      "Export PDF Report Error:",
-      error
-    );
-
-    // Important:
-    // Don't send JSON if PDF streaming has already started.
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        message:
-          "Failed to generate PDF report",
-        error: error.message,
-      });
-    }
-  }
-};
+  };
