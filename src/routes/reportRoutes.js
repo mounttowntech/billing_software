@@ -1,64 +1,79 @@
 const express = require("express");
+
 const router = express.Router();
 
 const reportController = require("../controllers/reportController");
-const { verifyToken } = require("../middleware/authMiddleware");
-const { allowRoles } = require("../middleware/roleMiddleware");
 
-// --- Admin / Manager reports (Image 5 & 6) ---
+// ============================================================
+// REPORT SUMMARY
+// ============================================================
+
 router.get(
   "/summary",
-  verifyToken,
-  allowRoles("admin", "manager", "cashier"),
-  reportController.getReportsSummary,
+  reportController.getReportsSummary
 );
+
+// ============================================================
+// REPORT ANALYTICS
+// ============================================================
 
 router.get(
   "/analytics",
-  //   verifyToken,
-  //   allowRoles("admin", "manager"),
-  reportController.getReportsAnalytics,
+  reportController.getReportsAnalytics
 );
+
+// ============================================================
+// SALES TREND
+// ============================================================
 
 router.get(
   "/sales-trend",
-  //   allowRoles("admin", "manager"),
-  reportController.getSalesTrend,
+  reportController.getSalesTrend
 );
+
+// ============================================================
+// SALES BY CATEGORY / PRODUCT
+// ============================================================
 
 router.get(
   "/sales-by-category",
-  //   allowRoles("admin", "manager"),
-  reportController.getSalesByCategory,
+  reportController.getSalesByCategory
 );
+
+// ============================================================
+// SALES SUMMARY / LEDGER
+// ============================================================
 
 router.get(
   "/sales-summary",
-  //   allowRoles("admin", "manager"),
-  reportController.getSalesSummary,
+  reportController.getSalesSummary
 );
 
-router.get(
-  "/top-products",
-  //   allowRoles("admin", "manager"),
-  reportController.getTopSellingProducts,
-);
+// ============================================================
+// TOP SELLING PRODUCTS
+// ============================================================
 
 router.get(
-  "/export",
-  //   allowRoles("admin", "manager"),
-  reportController.exportReport,
+  "/top-selling-products",
+  reportController.getTopSellingProducts
 );
+
+// ============================================================
+// EXPORT PDF
+// ============================================================
+
 router.get(
   "/export-pdf",
-  verifyToken,
   reportController.exportPDFReport
 );
-// --- Manager Dashboard "Recent Sales" widget ---
+
+// ============================================================
+// EXPORT EXCEL
+// ============================================================
+
 router.get(
-  "/manager-dashboard",
-  //   allowRoles("admin", "manager"),
-  reportController.getManagerDashboard,
+  "/export-excel",
+  reportController.exportReport
 );
 
 module.exports = router;

@@ -8,10 +8,27 @@ const GarmentCustomer = require("../model/GarmentCustomer");
 exports.createCustomer = async (req, res) => {
   try {
     const { customerCode, customerName, phone, email } = req.body;
+console.log("Request Body:", req.body);
+const conditions = [];
 
-    const existingCustomer = await GarmentCustomer.findOne({
-      $or: [{ customerCode }, { phone }],
+if (customerCode) {
+  conditions.push({
+    customerCode: customerCode.trim(),
+  });
+}
+
+if (phone) {
+  conditions.push({
+    phone: phone.trim(),
+  });
+}
+
+let existingCustomer = null;
+    existingCustomer = await GarmentCustomer.findOne({
+      $or: conditions,
     });
+
+    console.log("Existing Customer:", existingCustomer);
 
     if (existingCustomer) {
       return res.status(400).json({

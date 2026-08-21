@@ -20,7 +20,6 @@ const invoiceItemSchema = new mongoose.Schema(
 
     productName: {
       type: String,
-      required: true,
       trim: true,
     },
 
@@ -91,7 +90,7 @@ const garmentInvoiceSchema = new mongoose.Schema(
     // Employee/User who created the invoice
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee", // Change to "User" if your authentication uses User model
+      ref: "User", // Change to "User" if your authentication uses User model
       required: true,
     },
 
@@ -99,6 +98,13 @@ const garmentInvoiceSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    payments: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Payment",
+      },
+    ],
 
     items: {
       type: [invoiceItemSchema],
@@ -150,6 +156,9 @@ const garmentInvoiceSchema = new mongoose.Schema(
         "card",
         "wallet",
         "credit",
+        "cashfree",
+        "net_banking",
+        "cheque",
       ],
       default: "cash",
     },
