@@ -2,11 +2,23 @@ const mongoose = require("mongoose");
 
 const variantSchema = new mongoose.Schema(
   {
+    // Unique ID for this variant
+    variantCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     skuCode: { type: String, unique: true },
     barcode: { type: String, unique: true },
+    // size: {
+    //   type: String,
+    //   enum: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"],
+    // },
     size: {
       type: String,
-      enum: ["XS", "S", "M", "L", "XL", "XXL", "3XL", "4XL", "5XL"],
+      trim: true,
+      default: "",
     },
     color: { type: String, required: true },
     purchasePrice: { type: Number, default: 0 },
@@ -19,6 +31,16 @@ const variantSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    discountType: {
+    type: String,
+    enum: ["percentage", "amount"],
+    default: "percentage"
+  },
+
+  discountValue: {
+    type: Number,
+    default: 0
+  }
   },
   { _id: false },
 );

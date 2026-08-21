@@ -4,6 +4,8 @@ const generateSKU = require("../utils/generateSKU");
 
 const generateBarcode = require("../utils/generateBarcode");
 
+const generateVariantCode = require("../utils/generateVariantCode");
+
 /*
 |--------------------------------------------------------------------------
 | Create Product
@@ -74,12 +76,27 @@ exports.createProduct = async (req, res) => {
 
       const barcode = variant.barcode || generateBarcode();
 
+      const variantCode = variant?.variantCode || generateVariantCode();
+
+      let discountType =
+        variant.discountType !== undefined
+          ? variant.discountType
+          : "percentage";
+
+        let discountValue =
+        discountType == "percentage"
+          ? Number(variant.discountPercentage || 0)
+          : Number(variant?.discountAmount || 0);
+
       finalVariants.push({
         ...variant,
 
         skuCode,
 
         barcode,
+        variantCode,
+        discountType,
+        discountValue,
       });
     }
 
@@ -345,38 +362,296 @@ exports.searchByBarcode = async (req, res) => {
 //   }
 // };
 
+// exports.updateProduct = async (req, res) => {
+//   try {
+//     const updateData = { ...req.body };
+
+//     const product = await GarmentProduct.findById(req.params.id);
+
+//     if (!product) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Product not found",
+//       });
+//     }
+
+//     // Convert variants string to array
+//     if (updateData.variants && typeof updateData.variants === "string") {
+//       updateData.variants = JSON.parse(updateData.variants);
+//     }
+
+//     // Save uploaded image if a new one is selected
+//     if (req.file) {
+//       updateData.image = req.file.filename; // or req.file.path
+//     }
+
+//     const product = await GarmentProduct.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       {
+//         new: true,
+//         runValidators: true,
+//       },
+//     )
+//       .populate("category")
+//       .populate("brand");
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Product Updated Successfully",
+//       data: product,
+//     });
+//   } catch (error) {
+//     res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
 exports.updateProduct = async (req, res) => {
   try {
+    const productId = req.params.id;
+
+    // ============================================================
+    // FIND EXISTING PRODUCT
+    // ============================================================
+
+    const product = await GarmentProduct.findById(productId);
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // ============================================================
+    // COPY REQUEST DATA
+    // ============================================================
+
     const updateData = { ...req.body };
 
-    // Convert variants string to array
-    if (updateData.variants && typeof updateData.variants === "string") {
-      updateData.variants = JSON.parse(updateData.variants);
+    // ============================================================
+    // CONVERT VARIANTS STRING TO ARRAY
+    // ============================================================
+
+    if (
+      updateData.variants &&
+      typeof updateData.variants === "string"
+    ) {
+      try {
+        updateData.variants = JSON.parse(updateData.variants);
+      } catch (error) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid variants JSON format",
+        });
+      }
     }
 
-    // Save uploaded image if a new one is selected
+    // ============================================================
+    // PRODUCT NAME
+    // ============================================================
+
+    const productName =
+      updateData.productName || product.productName;
+
+    // ============================================================
+    // PROCESS VARIANTS
+    // ============================================================
+
+    if (Array.isArray(updateData.variants)) {
+      const existingVariants = product.variants || [];
+
+      const finalVariants = [];
+      
+      for (const variant of updateData.variants) {
+        let existingVariant = null;
+
+        // ============================================================
+        // 1. FIND BY VARIANT CODE
+        // ============================================================
+
+        if (variant.variantCode) {
+          existingVariant = existingVariants.find(
+            (oldVariant) =>
+              oldVariant.variantCode === variant.variantCode
+          );
+        }
+
+        // ============================================================
+        // 2. IF NO VARIANT CODE, TRY SKU
+        // ============================================================
+
+        if (!existingVariant && variant.skuCode) {
+          existingVariant = existingVariants.find(
+            (oldVariant) =>
+              oldVariant.skuCode === variant.skuCode
+          );
+        }
+
+        // ============================================================
+        // 3. IF NO SKU, TRY BARCODE
+        // ============================================================
+
+        if (!existingVariant && variant.barcode) {
+          existingVariant = existingVariants.find(
+            (oldVariant) =>
+              oldVariant.barcode === variant.barcode
+          );
+        }
+
+        // ============================================================
+        // 4. VARIANT CODE
+        // ============================================================
+
+        const variantCode =
+          variant.variantCode ||
+          existingVariant?.variantCode ||
+          generateVariantCode();
+
+        // ============================================================
+        // 5. SKU
+        // ============================================================
+
+        let skuCode =
+          variant.skuCode ||
+          existingVariant?.skuCode;
+
+        if (!skuCode) {
+          skuCode = await generateSKU(
+            "garments",
+            productName,
+            variant.color,
+            variant.size
+          );
+        }
+
+        // ============================================================
+        // 6. BARCODE
+        // ============================================================
+
+        const barcode =
+          variant.barcode ||
+          existingVariant?.barcode ||
+          generateBarcode();
+
+        // ============================================================
+        // 7. CURRENT STOCK
+        // ============================================================
+
+        let currentStock;
+
+        if (existingVariant) {
+          currentStock =
+            variant.currentStock !== undefined
+              ? Number(variant.currentStock)
+              : Number(existingVariant.currentStock || 0);
+        } else {
+          currentStock =
+            variant.currentStock !== undefined
+              ? Number(variant.currentStock)
+              : 0;
+        }
+
+        // ============================================================
+        // 8. MINIMUM STOCK
+        // ============================================================
+
+        const minimumStock =
+          variant.minimumStock !== undefined
+            ? Number(variant.minimumStock)
+            : Number(existingVariant?.minimumStock || 0);
+
+            // check discount type and value
+        const discountType =
+          variant.discountType !== undefined
+            ? variant.discountType
+            : existingVariant?.discountType || "percentage";
+
+            if(discountType === "percentage" && (variant.discountPercentage < 0 || variant.discountPercentage > 100)) {
+              throw new Error("Invalid discount percentage. Please enter a value between 0 and 100.");
+            }
+
+        const discountValue =
+          discountType == "percentage"
+            ? Number(variant.discountPercentage || existingVariant?.discountPercentage || 0)
+            : Number(variant?.discountAmount || 0);
+
+        // ============================================================
+        // 9. CREATE UPDATED VARIANT
+        // ============================================================
+
+        finalVariants.push({
+          ...(existingVariant
+            ? existingVariant.toObject
+              ? existingVariant.toObject()
+              : existingVariant
+            : {}),
+
+          ...variant,
+
+          variantCode,
+          skuCode,
+          barcode,
+          currentStock,
+          minimumStock,
+          discountType,
+          discountValue,
+        });
+      }
+console.log("updateDfinalVariantsata.variants", finalVariants);
+      updateData.variants = finalVariants;
+    }
+
+    console.log("updateData.variants", updateData.variants);
+    // ============================================================
+    // SAVE UPLOADED PRODUCT IMAGE
+    // ============================================================
+
     if (req.file) {
-      updateData.image = req.file.filename; // or req.file.path
+      updateData.image = req.file.filename;
     }
 
-    const product = await GarmentProduct.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      {
-        new: true,
-        runValidators: true,
-      },
-    )
-      .populate("category")
-      .populate("brand");
+    // ============================================================
+    // REMOVE UNWANTED FIELDS
+    // ============================================================
 
-    res.status(200).json({
+    delete updateData._id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+
+    // ============================================================
+    // UPDATE PRODUCT
+    // ============================================================
+
+    const updatedProduct =
+      await GarmentProduct.findByIdAndUpdate(
+        productId,
+        updateData,
+        {
+          new: true,
+          runValidators: true,
+        }
+      )
+        .populate("category")
+        .populate("brand");
+
+    // ============================================================
+    // RESPONSE
+    // ============================================================
+
+    return res.status(200).json({
       success: true,
       message: "Product Updated Successfully",
-      data: product,
+      data: updatedProduct,
     });
+
   } catch (error) {
-    res.status(500).json({
+    console.error("Update Product Error:", error);
+
+    return res.status(500).json({
       success: false,
       message: error.message,
     });

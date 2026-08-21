@@ -47,6 +47,8 @@ exports.createPurchase = async (req, res) => {
         referenceNumber: "PURCHASE",
 
         remarks: "Purchase Entry",
+
+        industryType: product.industryType || "garments",
       });
 
       subTotal += item.totalAmount || 0;
@@ -82,6 +84,7 @@ exports.createPurchase = async (req, res) => {
       data: purchase,
     });
   } catch (error) {
+    console.log("Error creating purchase:", error);
     res.status(500).json({
       success: false,
       message: error.message,
